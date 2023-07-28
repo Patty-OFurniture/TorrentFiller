@@ -7,6 +7,9 @@ internal class Program
     private static int pieceLength = 1024 * 32; // default, will be set from .torrent
     private static string searchRoot = "";
 
+    // get the list of files to search once
+    private static string[] files = { "" };
+
     private static void Main(string[] args)
     {
         if (args.Length < 1)
@@ -22,6 +25,8 @@ internal class Program
             Console.WriteLine($"Could not find: {searchRoot}");
             return;
         }
+
+        files = Directory.GetFiles(searchRoot, "*", SearchOption.AllDirectories);
 
         var torrentFiles = Directory.GetFiles(searchRoot, "*.torrent", SearchOption.AllDirectories);
         foreach (var torrentFile in torrentFiles)
@@ -86,7 +91,6 @@ internal class Program
         string result = "";
         bool hashMatched = false;
 
-        var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
         foreach (var file in files)
         {
             var fileInfo = new FileInfo(file);
