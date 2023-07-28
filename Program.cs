@@ -84,6 +84,7 @@ internal class Program
     static string FindFile(string root, int pieceLength, Torrent.FileHash fileHash)
     {
         string result = "";
+        bool hashMatched = false;
 
         var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
         foreach (var file in files)
@@ -99,25 +100,35 @@ internal class Program
                 {
                     try
                     {
-                        if (fileHash.HashOffset > 0)
+                        if (fileHash.HashOffset > 0 && stream.Length >= fileHash.HashOffset)
                             reader.Read(buffer, 0, fileHash.HashOffset);
                     } 
                     catch(Exception e)
                     {
                         // not sure what triggers this
+                        // added stream.Length >= fileHash.HashOffset test above, but how does it get that way?
                         Console.WriteLine(e);
                     }
 
                     while (pieceLength == reader.Read(buffer, 0, pieceLength))
                     {
+                        // just skip the rest of this file
+                        if (pieceIndex >= fileHash.PieceHashes.Count)
+                            break;
+
                         var hash = Hash(buffer);
                         Console.WriteLine(hash);
-                        Console.WriteLine(fileHash.PieceHashes[pieceIndex++]);
+                        Console.WriteLine(fileHash.PieceHashes[pieceIndex]);
                         Console.WriteLine("");
+                        // any piece matched is a potential fill
+                        // could break here, but reporting all hashes for dev purposes
+                        if (hash == fileHash.PieceHashes[pieceIndex++])
+                            hashMatched = true;
                     }
                 }
 
-                result = file;
+                if (hashMatched)
+                    result = file;
             }
         }
         return result;
