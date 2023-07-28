@@ -17,6 +17,12 @@ internal class Program
 
         searchRoot = args[0];
 
+        if (!Directory.Exists(searchRoot))
+        {
+            Console.WriteLine($"Could not find: {searchRoot}");
+            return;
+        }
+
         var torrentFiles = Directory.GetFiles(searchRoot, "*.torrent", SearchOption.AllDirectories);
         foreach (var torrentFile in torrentFiles)
         {
@@ -47,12 +53,12 @@ internal class Program
                 foreach (var v in h)
                 {
                     Console.WriteLine($"{Environment.NewLine}{v.Path} {v.FileLength} {v.HashOffset}");
-                    foreach (var z in v.PieceHashes)
-                    {
-                        Console.WriteLine(z);
-                    }
+                    //foreach (var z in v.PieceHashes)
+                    //{
+                    //    Console.WriteLine(z);
+                    //}
 
-                    var fileName = FindFile(searchRoot, pieceLength, v.HashOffset, v.FileLength);
+                    var fileName = FindFile(searchRoot, pieceLength, v);
                     if (!string.IsNullOrEmpty(fileName))
                     {
                         Console.WriteLine($"Found: {fileName}");
@@ -75,7 +81,7 @@ internal class Program
         return result;
     }
 
-    static string FindFile(string root, int pieceLength, int offset, int fileSize)
+    static string FindFile(string root, int pieceLength, Torrent.FileHash fileHash)
     {
         string result = "";
 
@@ -83,20 +89,31 @@ internal class Program
         foreach (var file in files)
         {
             var fileInfo = new FileInfo(file);
-            if (fileInfo.Length == fileSize)
+            if (fileInfo.Length == fileHash.FileLength)
             {
                 var buffer = new byte[pieceLength];
+                int pieceIndex = 0;
 
                 using (var stream = File.OpenRead(file))
                 using (var reader = new BinaryReader(stream))
                 {
-                    if (offset > 0)
-                        reader.Read(buffer, 0, offset);
+                    try
+                    {
+                        if (fileHash.HashOffset > 0)
+                            reader.Read(buffer, 0, fileHash.HashOffset);
+                    } 
+                    catch(Exception e)
+                    {
+                        // not sure what triggers this
+                        Console.WriteLine(e);
+                    }
 
                     while (pieceLength == reader.Read(buffer, 0, pieceLength))
                     {
                         var hash = Hash(buffer);
                         Console.WriteLine(hash);
+                        Console.WriteLine(fileHash.PieceHashes[pieceIndex++]);
+                        Console.WriteLine("");
                     }
                 }
 
