@@ -5,10 +5,18 @@ using XSystem.Security.Cryptography;
 internal class Program
 {
     private static int pieceLength = 1024 * 32; // default, will be set from .torrent
-    private static string searchRoot = @"D:\Downloads\celebs\A-J\Hayden Panettiere";
+    private static string searchRoot = "";
 
     private static void Main(string[] args)
     {
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Please pass an argument for the base path. Torrent contents and .torrent files will be searched from there");
+            return;
+        }
+
+        searchRoot = args[0];
+
         var torrentFiles = Directory.GetFiles(searchRoot, "*.torrent", SearchOption.AllDirectories);
         foreach (var torrentFile in torrentFiles)
         {
