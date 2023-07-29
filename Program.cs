@@ -48,6 +48,8 @@ internal class Program
         //int offset = 6081;
         //var fileName = FindFile(searchRoot, pieceLength, offset, fileSize);
         //Console.WriteLine(fileName);
+
+        return;
     }
 
     static bool ParseTorrent(string torrentFile)

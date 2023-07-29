@@ -252,7 +252,7 @@ namespace Torrent
                 object key = Read();
                 if (key == null)
                     break;
-                object value = Read();
+                object value = Read(key.ToString());
                 if (value == null)
                     break;
 
@@ -296,10 +296,8 @@ namespace Torrent
             return Convert.ToInt32(sb.ToString());
         }
 
-        private object ReadString(int c)
+        private object ReadBytes(int c)
         {
-            bool isAscii = true;
-
             StringBuilder sb = new StringBuilder();
             while (c != ':')
             {
@@ -310,6 +308,39 @@ namespace Torrent
             int stringLength = Convert.ToInt32(sb.ToString());
             byte[] bytes = new byte[stringLength];
 
+            for (int i = 0; i < stringLength; i++)
+            {
+                char ch = (char)stream.ReadByte();
+                bytes[i] = (byte)ch;
+            }
+
+            return bytes;
+        }
+
+        private object ReadString(int c)
+        {
+            StringBuilder sb = new StringBuilder();
+            while (c != ':')
+            {
+                sb.Append((char)c);
+                c = stream.ReadByte();
+            }
+
+            int stringLength = Convert.ToInt32(sb.ToString());
+            byte[] bytes = new byte[stringLength];
+
+#if true
+            for (int i = 0; i < stringLength; i++)
+            {
+                char ch = (char)stream.ReadByte();
+                bytes[i] = (byte)ch;
+            }
+
+            string result = System.Text.Encoding.UTF8.GetString(bytes);
+            return result;
+        }
+#else
+            bool isAscii = true;
             for (int i = 0; i <  stringLength; i++)
             {
                 char ch = (char) stream.ReadByte();
@@ -327,8 +358,9 @@ namespace Torrent
 
             return bytes;
         }
+#endif
 
-        public object Read()
+        public object Read(string? key = null)
         {
             object result = null;
 
@@ -359,7 +391,10 @@ namespace Torrent
                         Console.WriteLine(result = ReadInt());
                         break;
                     default:
-                        Console.WriteLine(result = ReadString(c));
+                        if (key == "pieces")
+                            Console.WriteLine(result = ReadBytes(c));
+                        else
+                            Console.WriteLine(result = ReadString(c));
                         break;
                 }
                 return result;
