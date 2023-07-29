@@ -8,7 +8,7 @@ internal class Program
     private static string searchRoot = "";
 
     // get the list of files to search once
-    private static string[] fileNames = { "" };
+    private static IEnumerable<string> fileNames = null;
     private static List<FileInfo> files = new List<FileInfo>();
 
     private static void Main(string[] args)
@@ -27,7 +27,7 @@ internal class Program
             return;
         }
 
-        fileNames = Directory.GetFiles(searchRoot, "*", SearchOption.AllDirectories);
+        fileNames = GetFiles(searchRoot, "*");
 
         foreach (var file in fileNames)
         {
@@ -35,7 +35,9 @@ internal class Program
             files.Add(fileInfo);
         }
 
-        var torrentFiles = Directory.GetFiles(searchRoot, "*.torrent", SearchOption.AllDirectories);
+        fileNames = new string[0];
+
+        var torrentFiles = GetFiles(searchRoot, "*.torrent");
         foreach (var torrentFile in torrentFiles)
         {
             ParseTorrent(torrentFile);
@@ -162,6 +164,44 @@ internal class Program
             }
 
             return sb.ToString();
+        }
+    }
+
+    // https://stackoverflow.com/questions/929276/how-to-recursively-list-all-the-files-in-a-directory-in-c
+    public static IEnumerable<string> GetFiles(string path, string wildcard)
+    {
+        Queue<string> queue = new Queue<string>();
+        queue.Enqueue(path);
+        while (queue.Count > 0)
+        {
+            path = queue.Dequeue();
+            try
+            {
+                foreach (string subDir in Directory.GetDirectories(path))
+                {
+                    queue.Enqueue(subDir);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex);
+            }
+            string[] files = null;
+            try
+            {
+                files = Directory.GetFiles(path, wildcard);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex);
+            }
+            if (files != null)
+            {
+                for (int i = 0; i < files.Length; i++)
+                {
+                    yield return files[i];
+                }
+            }
         }
     }
 }
