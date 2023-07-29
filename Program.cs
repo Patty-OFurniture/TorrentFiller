@@ -8,7 +8,8 @@ internal class Program
     private static string searchRoot = "";
 
     // get the list of files to search once
-    private static string[] files = { "" };
+    private static string[] fileNames = { "" };
+    private static List<FileInfo> files = new List<FileInfo>();
 
     private static void Main(string[] args)
     {
@@ -26,7 +27,13 @@ internal class Program
             return;
         }
 
-        files = Directory.GetFiles(searchRoot, "*", SearchOption.AllDirectories);
+        fileNames = Directory.GetFiles(searchRoot, "*", SearchOption.AllDirectories);
+
+        foreach (var file in fileNames)
+        {
+            var fileInfo = new FileInfo(file);
+            files.Add(fileInfo);
+        }
 
         var torrentFiles = Directory.GetFiles(searchRoot, "*.torrent", SearchOption.AllDirectories);
         foreach (var torrentFile in torrentFiles)
@@ -58,6 +65,9 @@ internal class Program
                 foreach (var v in h)
                 {
                     Console.WriteLine($"{Environment.NewLine}{v.Path} {v.FileLength} {v.HashOffset}");
+                    //if (v.Path == "System.Collections.Generic.List`1[System.Object]")
+                        //System.Diagnostics.Debugger.Break();
+
                     //foreach (var z in v.PieceHashes)
                     //{
                     //    Console.WriteLine(z);
@@ -72,7 +82,8 @@ internal class Program
                         if (!Directory.Exists(t.info.name))
                             Directory.CreateDirectory(t.info.name);
 
-                        System.IO.File.Copy(fileName, destination, false);
+                        if (!File.Exists(destination))
+                            File.Copy(fileName, destination, false);
                     }
                 }
             }
@@ -91,15 +102,14 @@ internal class Program
         string result = "";
         bool hashMatched = false;
 
-        foreach (var file in files)
+        foreach (var fileInfo in files)
         {
-            var fileInfo = new FileInfo(file);
             if (fileInfo.Length == fileHash.FileLength)
             {
                 var buffer = new byte[pieceLength];
                 int pieceIndex = 0;
 
-                using (var stream = File.OpenRead(file))
+                using (var stream = File.OpenRead(fileInfo.FullName))
                 using (var reader = new BinaryReader(stream))
                 {
                     try
@@ -132,7 +142,7 @@ internal class Program
                 }
 
                 if (hashMatched)
-                    result = file;
+                    result = fileInfo.FullName;
             }
         }
         return result;

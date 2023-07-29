@@ -118,7 +118,24 @@ namespace Torrent
                         IDictionary<string, object> d = (IDictionary<string, object>)i;
                         var t = new TorrentFile();
                         t.length = Convert.ToInt32(d["length"]);
-                        t.path = d["path"].ToString();
+                        if (d["path"] is IList<object>)
+                        {
+                            var pathList = d["path"] as IList<object>;
+                            for(int index = 0; index < pathList.Count; index++)
+                            {
+                                if (pathList[index] is byte[])
+                                {
+                                    pathList[index] = UTF8Encoding.UTF8.GetString(pathList[index] as byte[]);
+                                }
+                            }
+                            //t.path = Path.Combine(params pathList.ToArray());
+                            t.path = Path.Combine (pathList.Select(p => p.ToString()).ToArray());
+                        }
+                        else
+                        {
+                            t.path = d["path"].ToString();
+                        }
+
                         result.Add(t);
                     }
                 }
