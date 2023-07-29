@@ -11,15 +11,26 @@ internal class Program
     private static IEnumerable<string> fileNames = null;
     private static List<FileInfo> files = new List<FileInfo>();
 
+    [STAThread]
     private static void Main(string[] args)
     {
         if (args.Length < 1)
         {
-            Console.WriteLine("Please pass an argument for the base path. Torrent contents and .torrent files will be searched from there");
-            return;
+            var folder = HashTester.UI.RequestFolder();
+            if (folder != null)
+            {
+                searchRoot = folder;
+            }
+            else
+            {
+                Console.WriteLine("Please pass an argument for the base path. Torrent contents and .torrent files will be searched from there");
+                return;
+            }
+        } 
+        else
+        {
+            searchRoot = args[0];
         }
-
-        searchRoot = args[0];
 
         if (!Directory.Exists(searchRoot))
         {
