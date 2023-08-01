@@ -93,7 +93,10 @@ internal class Program
                     {
                         Console.WriteLine($"Found: {fileName}");
                         string destination = Path.Combine(t.info.name, v.Path);
-                        
+
+                        // CreateDirectory() Creates all directories and subdirectories
+                        // in the specified path unless they already exist.
+                        // Exists() is redundant, but coded this way for a breakpoint on CreateDirectory()
                         if (!Directory.Exists(t.info.name))
                             Directory.CreateDirectory(t.info.name);
 
