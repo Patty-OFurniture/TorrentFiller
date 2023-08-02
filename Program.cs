@@ -1,4 +1,5 @@
 ﻿// See https://aka.ms/new-console-template for more information
+using System.IO;
 using System.Text;
 using XSystem.Security.Cryptography;
 
@@ -9,7 +10,8 @@ internal class Program
 
     // get the list of files to search once
     private static IEnumerable<string> fileNames = null;
-    private static List<FileInfo> files = new List<FileInfo>();
+    private static List<FileInfo> fileList = new List<FileInfo>();
+    private static ILookup<int, FileInfo> files = null;
 
     [STAThread]
     private static void Main(string[] args)
@@ -43,8 +45,10 @@ internal class Program
         foreach (var file in fileNames)
         {
             var fileInfo = new FileInfo(file);
-            files.Add(fileInfo);
+            fileList.Add(fileInfo);
         }
+
+        files = fileList.ToLookup(f => (int) f.Length, f => f);
 
         fileNames = new string[0];
 
@@ -120,9 +124,9 @@ internal class Program
         string result = "";
         bool hashMatched = false;
 
-        foreach (var fileInfo in files)
-        {
-            if (fileInfo.Length == fileHash.FileLength)
+        if (files.Contains(fileHash.FileLength))
+        { 
+            foreach (var fileInfo in files[fileHash.FileLength])
             {
                 var buffer = new byte[pieceLength];
                 int pieceIndex = 0;

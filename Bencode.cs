@@ -370,31 +370,33 @@ namespace Torrent
                 if (c < 0)
                     return null;
 
-                Console.Write(new string(' ', indent));
+                //Console.Write(new string(' ', indent));
                 switch (c)
                 {
                     case 'e':
                         indent -= 2;
-                        Console.WriteLine("End");
+                        //Console.WriteLine("End");
                         break;
                     case 'd':
                         indent += 2;
-                        Console.WriteLine("Dictionary");
+                        //Console.WriteLine("Dictionary");
                         result = ReadDictionary();
                         break;
                     case 'l':
                         indent += 2;
-                        Console.WriteLine("List");
+                        //Console.WriteLine("List");
                         result = ReadList();
                         break;
                     case 'i':
-                        Console.WriteLine(result = ReadInt());
+                        result = ReadInt();
+                        //Console.WriteLine(result);
                         break;
                     default:
                         if (key == "pieces")
-                            Console.WriteLine(result = ReadBytes(c));
+                            result = ReadBytes(c);
                         else
-                            Console.WriteLine(result = ReadString(c));
+                            result = ReadString(c);
+                        //Console.WriteLine(result);
                         break;
                 }
                 return result;
