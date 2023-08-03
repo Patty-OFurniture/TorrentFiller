@@ -5,6 +5,8 @@ Selects all .torrent files in a folder, finds files with matching size *and piec
 
 Fully functional,except that it probably will not find files that are smaller than the piece size.  It needs at least one piece hash to match.  That would require finding the previous and/or next files first, then hashing parts of each file.  More complicated than I want to deal with right now, especially since I'm more concerned with larger files.
 
+Windows version in HashTester.zip prompts for the folder with the .torrent and files, and copies them to the local path.  Couldn't be simpler, and it's *fast*.
+
 In response to:
 
 https://github.com/qbittorrent/qBittorrent/issues/6520
