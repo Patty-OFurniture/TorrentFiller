@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using XSystem.Security.Cryptography;
 
 namespace Torrent
 {
@@ -47,15 +48,49 @@ namespace Torrent
 
     public class Bencode : IDisposable
     {
-        private Stream stream;
+        private Stream? stream;
         private string path;
         private int indent;
+
+        private long infohashStart = 0;
+        private long infohashEnd = 0;
 
         public Bencode(string _path)
         {
             stream = null;
             path = _path;
             indent = 0;
+        }
+
+        public static string Hash(byte[] input)
+        {
+            using (SHA1Managed sha1 = new SHA1Managed())
+            {
+                // convert char[] from StreamReader to byte[]
+                var hash = sha1.ComputeHash(input);
+                var sb = new StringBuilder(hash.Length * 2);
+
+                foreach (byte b in hash)
+                {
+                    sb.Append(b.ToString("x2"));
+                }
+
+                return sb.ToString();
+            }
+        }
+
+        public string? GetInfoHash()
+        {
+            string? result = null;
+            if (infohashStart > 0 && infohashEnd > 0)
+            {
+                // TODO: rewind and get SHA-1
+                stream.Position = infohashStart;
+                byte[] bytes = new byte[infohashEnd - infohashStart];
+                stream.Read(bytes, 0, (int) (infohashEnd - infohashStart));
+                result = Hash(bytes);
+            }
+            return result;
         }
 
         // this throws away hashes that span files
@@ -252,11 +287,18 @@ namespace Torrent
                 object key = Read();
                 if (key == null)
                     break;
+
+                if (key.ToString() == "info")
+                    infohashStart = stream.Position;
+
                 object value = Read(key.ToString());
                 if (value == null)
                     break;
 
                 result.Add(key.ToString(), value);
+
+                if (key.ToString() == "info")
+                    infohashEnd = stream.Position;
             }
             return result;
         }
