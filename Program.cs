@@ -104,8 +104,13 @@ internal class Program
                         // CreateDirectory() Creates all directories and subdirectories
                         // in the specified path unless they already exist.
                         // Exists() is redundant, but coded this way for a breakpoint on CreateDirectory()
-                        if (!Directory.Exists(t.info.name))
-                            Directory.CreateDirectory(t.info.name);
+                        // but the filename may have part of the path
+                        string? destinationPath = Path.GetDirectoryName(destination);
+                        if (destinationPath != null)
+                        {
+                            if (!Directory.Exists(destinationPath))
+                                Directory.CreateDirectory(destinationPath);
+                        }
 
                         if (!File.Exists(destination))
                             File.Copy(fileName, destination, false);
@@ -133,6 +138,12 @@ internal class Program
             {
                 var buffer = new byte[pieceLength];
                 int pieceIndex = 0;
+
+                // files under piece size
+                if (fileHash.HashOffset + pieceLength > fileInfo.Length)
+                {
+                    continue;
+                }
 
                 using (var stream = File.OpenRead(fileInfo.FullName))
                 using (var reader = new BinaryReader(stream))
