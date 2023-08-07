@@ -9,8 +9,7 @@ internal class Program
     private static string searchRoot = "";
 
     // get the list of files to search once
-    private static IEnumerable<string> fileNames = null;
-    private static List<FileInfo> fileList = new List<FileInfo>();
+    private static IEnumerable<FileInfo> fileList = new List<FileInfo>();
     private static ILookup<int, FileInfo> files = null;
 
     [STAThread]
@@ -40,22 +39,16 @@ internal class Program
             return;
         }
 
-        fileNames = GetFiles(searchRoot, "*");
-
-        foreach (var file in fileNames)
-        {
-            var fileInfo = new FileInfo(file);
-            fileList.Add(fileInfo);
-        }
+        fileList = GetFiles(searchRoot, "*");
 
         files = fileList.ToLookup(f => (int) f.Length, f => f);
 
-        fileNames = new string[0];
+        fileList = new List<FileInfo>(); // probably unnecessary
 
         var torrentFiles = GetFiles(searchRoot, "*.torrent");
         foreach (var torrentFile in torrentFiles)
         {
-            ParseTorrent(torrentFile);
+            ParseTorrent(torrentFile.FullName);
         }
 
         // unit test
@@ -133,13 +126,21 @@ internal class Program
         bool hashMatched = false;
 
         if (files.Contains(fileHash.FileLength))
-        { 
+        {
+            // HASK: copy when size matches, and there's only 1 file that size
+            if (files[fileHash.FileLength].Count() == 1
+                && pieceLength > fileHash.FileLength)
+            {
+                return files[fileHash.FileLength].First().FullName;
+            }
+
             foreach (var fileInfo in files[fileHash.FileLength])
             {
                 var buffer = new byte[pieceLength];
                 int pieceIndex = 0;
 
                 // files under piece size
+                // TODO: second pass, hash in order of info block
                 if (fileHash.HashOffset + pieceLength > fileInfo.Length)
                 {
                     continue;
@@ -185,7 +186,7 @@ internal class Program
     }
 
     // https://stackoverflow.com/questions/929276/how-to-recursively-list-all-the-files-in-a-directory-in-c
-    public static IEnumerable<string> GetFiles(string path, string wildcard)
+    public static IEnumerable<FileInfo> GetFiles(string path, string wildcard)
     {
         Queue<string> queue = new Queue<string>();
         queue.Enqueue(path);
@@ -203,10 +204,12 @@ internal class Program
             {
                 Console.Error.WriteLine(ex);
             }
-            string[] files = null;
+            FileInfo[] files = null;
             try
             {
-                files = Directory.GetFiles(path, wildcard);
+                //                files = Directory.GetFiles(path, wildcard);
+                var dir = new DirectoryInfo(path);
+                files = dir.GetFiles(wildcard);
             }
             catch (Exception ex)
             {
