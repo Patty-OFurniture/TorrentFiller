@@ -82,9 +82,8 @@ namespace Torrent
         public string? GetInfoHash()
         {
             string? result = null;
-            if (infohashStart > 0 && infohashEnd > 0)
+            if (infohashStart > 0 && infohashEnd > 0 && stream != null)
             {
-                // TODO: rewind and get SHA-1
                 stream.Position = infohashStart;
                 byte[] bytes = new byte[infohashEnd - infohashStart];
                 stream.Read(bytes, 0, (int) (infohashEnd - infohashStart));
@@ -104,37 +103,59 @@ namespace Torrent
             int fileIndex = 0;
             int fileOffset = 0;
             int fileRemainder = data.info.files[fileIndex].length;
+            int pieceRemainder = data.info.piece_length;
 
+            // either a file spans pieces, or pieces span a file
             for (int pieceIndex = 0; pieceIndex < data.info.pieces.Count; pieceIndex++)
             {
-                FileHash fileHash = new FileHash();
-                fileHash.Path = data.info.files[fileIndex].path;
-                fileHash.FileLength = data.info.files[fileIndex].length;
-                fileHash.HashOffset = fileOffset;
-                fileHash.PieceHashes = new List<string>();
+                TorrentFile file;
 
-                while (fileRemainder >= data.info.piece_length)
+                // comsume files up to piece size
+                if (fileRemainder < pieceRemainder)
                 {
-                    fileOffset += data.info.piece_length;
-                    fileRemainder -= data.info.piece_length;
-                    fileHash.PieceHashes.Add(data.info.pieces[pieceIndex++]);
-                }
-                fileHashList.Add(fileHash);
+                    do
+                    {
+                        file = data.info.files[fileIndex++];
+                        pieceRemainder -= file.length;
+                    } while (pieceRemainder > 0);
 
-                while (++fileIndex < data.info.files.Count)
+                    // spanning hashes get thrown away
+                    pieceIndex++;
+                    // start hashing this many bytes into the file
+                    fileOffset = 0 - pieceRemainder;
+                    // file has this many bytes left over for the spanning hash
+                    fileRemainder = file.length + pieceRemainder;
+                    // piece needs this much of the next file
+                    pieceRemainder = data.info.piece_length + pieceRemainder;
+                }
+
+                else
                 {
-                    if (fileRemainder >= data.info.files[fileIndex].length)
-                        fileRemainder -= data.info.files[fileIndex].length;
-                    else
-                        break; // goto might be harmless here
+                    file = data.info.files[fileIndex++];
+                    FileHash fileHash = new FileHash();
+                    fileHash.Path = file.path;
+                    fileHash.FileLength = file.length;
+                    fileHash.HashOffset = fileOffset;
+                    fileHash.PieceHashes = new List<string>();
+
+                    while (fileRemainder >= data.info.piece_length)
+                    {
+                        fileRemainder -= data.info.piece_length;
+                        // should happen for a well formed .torrent file
+                        if (pieceIndex < data.info.pieces.Count)
+                            fileHash.PieceHashes.Add(data.info.pieces[pieceIndex++]);
+                        else
+                            pieceIndex++; // ????
+                    }
+                    fileHashList.Add(fileHash);
+                    // 10k remainder with 32k pieces means skip 22k before hashing
+                    fileOffset = data.info.piece_length - fileRemainder;
+                    fileRemainder = file.length - fileOffset;
                 }
 
-                if (!(fileIndex < data.info.files.Count))
+                // should not happen for a well formed .torrent file
+                if (fileIndex >= data.info.files.Count)
                     return fileHashList;
-
-                // 10k remainder with 32k pieces means skip 22k before hashing
-                fileOffset = data.info.piece_length - fileRemainder;
-                fileRemainder = data.info.files[fileIndex].length - fileOffset;
             }
 
             return fileHashList;

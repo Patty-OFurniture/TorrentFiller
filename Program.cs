@@ -5,7 +5,6 @@ using XSystem.Security.Cryptography;
 
 internal class Program
 {
-    private static int pieceLength = 1024 * 32; // default, will be set from .torrent
     private static string searchRoot = "";
 
     // get the list of files to search once
@@ -39,15 +38,28 @@ internal class Program
             return;
         }
 
+        Console.WriteLine("Finding torrents...");
+#if DeepTorrent
+        var torrentFiles = GetFiles(searchRoot, "*.torrent");
+#else
+        var dir = new DirectoryInfo(searchRoot);
+        var torrentFiles = dir.GetFiles("*.torrent");
+#endif
+        Console.WriteLine($"Found {torrentFiles.Count()} torrents...");
+
+        Console.WriteLine("");
+
+        Console.WriteLine("Finding files...");
         fileList = GetFiles(searchRoot, "*");
+        Console.WriteLine($"Found {fileList.Count()} files...");
 
         files = fileList.ToLookup(f => (int) f.Length, f => f);
 
         fileList = new List<FileInfo>(); // probably unnecessary
 
-        var torrentFiles = GetFiles(searchRoot, "*.torrent");
         foreach (var torrentFile in torrentFiles)
         {
+            Console.WriteLine(torrentFile.Name);
             ParseTorrent(torrentFile.FullName);
         }
 
@@ -73,13 +85,22 @@ internal class Program
                 var h = reader.CreateFileHashList(t);
                 var infoHash = reader.GetInfoHash();
 
-                Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash}");
+                Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {t.info.piece_length} Pieces: {t.info.pieces.Count}");
 
-                pieceLength = t.info.piece_length;
+                // files may not be sorted in a logical order, display them in hash order
+                foreach (var f in t.info.files)
+                {
+                    Console.WriteLine($"{f.length} {f.path}");
+                }
+                Console.WriteLine("");
+
+                int pieces = 0;
 
                 foreach (var v in h)
                 {
-                    Console.WriteLine($"{Environment.NewLine}{v.Path} {v.FileLength} {v.HashOffset}");
+                    pieces += v.PieceHashes.Count;
+
+                    Console.WriteLine($"{Environment.NewLine}{v.Path} {v.FileLength} o {v.HashOffset} c {v.PieceHashes.Count}");
                     //if (v.Path == "System.Collections.Generic.List`1[System.Object]")
                         //System.Diagnostics.Debugger.Break();
 
@@ -88,7 +109,7 @@ internal class Program
                     //    Console.WriteLine(z);
                     //}
 
-                    var fileName = FindFile(searchRoot, pieceLength, v);
+                    var fileName = FindFile(searchRoot, t.info.piece_length, v);
                     if (!string.IsNullOrEmpty(fileName))
                     {
                         Console.WriteLine($"Found: {fileName}");
@@ -109,6 +130,7 @@ internal class Program
                             File.Copy(fileName, destination, false);
                     }
                 }
+                Console.WriteLine($"Piece hashes: {pieces}");
             }
             result = true;
         }
@@ -127,7 +149,7 @@ internal class Program
 
         if (files.Contains(fileHash.FileLength))
         {
-            // HASK: copy when size matches, and there's only 1 file that size
+            // HACK: copy when size matches, and there's only 1 file that size
             if (files[fileHash.FileLength].Count() == 1
                 && pieceLength > fileHash.FileLength)
             {
@@ -136,9 +158,6 @@ internal class Program
 
             foreach (var fileInfo in files[fileHash.FileLength])
             {
-                var buffer = new byte[pieceLength];
-                int pieceIndex = 0;
-
                 // files under piece size
                 // TODO: second pass, hash in order of info block
                 if (fileHash.HashOffset + pieceLength > fileInfo.Length)
@@ -146,36 +165,47 @@ internal class Program
                     continue;
                 }
 
-                using (var stream = File.OpenRead(fileInfo.FullName))
-                using (var reader = new BinaryReader(stream))
+                var buffer = new byte[pieceLength];
+                int pieceIndex = 0;
+
+                try
                 {
-                    try
+                    using (var stream = File.OpenRead(fileInfo.FullName))
+                    using (var reader = new BinaryReader(stream))
                     {
-                        if (fileHash.HashOffset > 0 && stream.Length >= fileHash.HashOffset)
-                            reader.Read(buffer, 0, fileHash.HashOffset);
-                    } 
-                    catch(Exception e)
-                    {
-                        // not sure what triggers this
-                        // added stream.Length >= fileHash.HashOffset test above, but how does it get that way?
-                        Console.WriteLine(e);
-                    }
+                        try
+                        {
+                            if (fileHash.HashOffset > 0 && stream.Length >= fileHash.HashOffset)
+                                reader.Read(buffer, 0, fileHash.HashOffset);
+                        }
+                        catch (Exception e)
+                        {
+                            // not sure what triggers this
+                            // added stream.Length >= fileHash.HashOffset test above, but how does it get that way?
+                            Console.WriteLine(e);
+                        }
 
-                    while (pieceLength == reader.Read(buffer, 0, pieceLength))
-                    {
-                        // just skip the rest of this file
-                        if (pieceIndex >= fileHash.PieceHashes.Count)
-                            break;
+                        while (pieceLength == reader.Read(buffer, 0, pieceLength))
+                        {
+                            // just skip the rest of this file
+                            if (pieceIndex >= fileHash.PieceHashes.Count)
+                                break;
 
-                        var hash = Torrent.Bencode.Hash(buffer);
-                        Console.WriteLine(hash);
-                        Console.WriteLine(fileHash.PieceHashes[pieceIndex]);
-                        Console.WriteLine("");
-                        // any piece matched is a potential fill
-                        // could break here, but reporting all hashes for dev purposes
-                        if (hash == fileHash.PieceHashes[pieceIndex++])
-                            hashMatched = true;
+                            var hash = Torrent.Bencode.Hash(buffer);
+                            Console.WriteLine(hash);
+                            Console.WriteLine(fileHash.PieceHashes[pieceIndex]);
+                            Console.WriteLine("");
+                            // any piece matched is a potential fill
+                            // could break here, but reporting all hashes for dev purposes
+                            if (hash == fileHash.PieceHashes[pieceIndex++])
+                                hashMatched = true;
+                        }
                     }
+                } 
+                catch(Exception e)
+                {
+                    // sharing violation, probably
+                    Console.WriteLine(e);
                 }
 
                 if (hashMatched)
