@@ -118,7 +118,8 @@ namespace Torrent
             int fileRemainder = file.length;
 
             // either a file spans pieces, or pieces span a file
-            while(files.Count > 0 && pieceHashes.Count > 0)
+            // files gets Dequeued at the end of the loop, so zero is fine
+            while(files.Count >= 0 && pieceHashes.Count > 0)
             {
                 // comsume files up to piece size
                 if (fileRemainder < pieceRemainder)
