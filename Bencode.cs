@@ -257,6 +257,17 @@ namespace Torrent
                 key = "files";
                 if (d.ContainsKey(key))
                     torrentInfo.files = CreateTorrentFileList(d[key] as List<object>);
+                else
+                { 
+                    // temp hack - single files don't have a "files" info block
+                    torrentInfo.files = new List<TorrentFile>();
+                    TorrentFile file = new TorrentFile();
+                    file.path = torrentInfo.name;
+                    key = "length";
+                    if (d.ContainsKey(key))
+                        file.length = (int)d[key];
+                    torrentInfo.files.Add(file);
+                }
             }
 
             return torrentInfo;

@@ -39,7 +39,7 @@ internal class Program
         }
 
         Console.WriteLine("Finding torrents...");
-#if DeepTorrent
+#if !DeepTorrent
         var torrentFiles = GetFiles(searchRoot, "*.torrent");
 #else
         var dir = new DirectoryInfo(searchRoot);
