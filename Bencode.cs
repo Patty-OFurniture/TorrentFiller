@@ -97,30 +97,41 @@ namespace Torrent
         {
             List<FileHash> fileHashList = new List<FileHash>();
 
-            if (data.info.files == null)
+            if (data.info.files == null || data.info.files.Count < 1)
                 return fileHashList;
 
-            int fileIndex = 0;
-            int fileOffset = 0;
-            int fileRemainder = data.info.files[fileIndex].length;
-            int pieceRemainder = data.info.piece_length;
-
-            // either a file spans pieces, or pieces span a file
+            Queue<string> pieceHashes = new Queue<string>();
             for (int pieceIndex = 0; pieceIndex < data.info.pieces.Count; pieceIndex++)
             {
-                TorrentFile file;
+                pieceHashes.Enqueue(data.info.pieces[pieceIndex]);
+            }
+            Queue<TorrentFile> files = new Queue<TorrentFile>();
+            for(int filesIndex = 0; filesIndex < data.info.files.Count; filesIndex++)
+            {
+                files.Enqueue(data.info.files[filesIndex]);
+            }
 
+            var file = files.Dequeue();
+
+            int pieceRemainder = data.info.piece_length;
+            int fileOffset = 0;
+            int fileRemainder = file.length;
+
+            // either a file spans pieces, or pieces span a file
+            while(files.Count > 0 && pieceHashes.Count > 0)
+            {
                 // comsume files up to piece size
                 if (fileRemainder < pieceRemainder)
                 {
                     do
                     {
-                        file = data.info.files[fileIndex++];
                         pieceRemainder -= file.length;
+                        file = files.Dequeue();
                     } while (pieceRemainder > 0);
 
                     // spanning hashes get thrown away
-                    pieceIndex++;
+                    Console.WriteLine(pieceHashes.Dequeue() + " [span]");
+
                     // start hashing this many bytes into the file
                     fileOffset = 0 - pieceRemainder;
                     // file has this many bytes left over for the spanning hash
@@ -128,10 +139,8 @@ namespace Torrent
                     // piece needs this much of the next file
                     pieceRemainder = data.info.piece_length + pieceRemainder;
                 }
-
                 else
                 {
-                    file = data.info.files[fileIndex++];
                     FileHash fileHash = new FileHash();
                     fileHash.Path = file.path;
                     fileHash.FileLength = file.length;
@@ -142,20 +151,23 @@ namespace Torrent
                     {
                         fileRemainder -= data.info.piece_length;
                         // should happen for a well formed .torrent file
-                        if (pieceIndex < data.info.pieces.Count)
-                            fileHash.PieceHashes.Add(data.info.pieces[pieceIndex++]);
-                        else
-                            pieceIndex++; // ????
+                        fileHash.PieceHashes.Add(pieceHashes.Dequeue());
                     }
-                    fileHashList.Add(fileHash);
-                    // 10k remainder with 32k pieces means skip 22k before hashing
-                    fileOffset = data.info.piece_length - fileRemainder;
-                    fileRemainder = file.length - fileOffset;
-                }
 
-                // should not happen for a well formed .torrent file
-                if (fileIndex >= data.info.files.Count)
-                    return fileHashList;
+                    Console.WriteLine(fileHash.FileLength + " " + fileHash.Path);
+
+                    fileHashList.Add(fileHash);
+
+                    // 10k remainder with 32k pieces means skip 22k before hashing
+                    // and throw away the file-spanning hash
+                    if (fileRemainder > 0)
+                    {
+                        files.TryDequeue(out file);
+                        fileOffset = data.info.piece_length - fileRemainder;
+                        fileRemainder = file.length - fileOffset;
+                        Console.WriteLine(pieceHashes.Dequeue() + " [span]");
+                    }
+                }
             }
 
             return fileHashList;
@@ -210,7 +222,7 @@ namespace Torrent
                 sBuilder.Append(pieces[i].ToString("x2"));
                 if (sBuilder.Length == 40)
                 {
-                    // Console.WriteLine(new string(' ', indent) + sBuilder.ToString());
+                    Console.WriteLine(new string(' ', indent) + sBuilder.ToString());
                     pieceList.Add(sBuilder.ToString());
                     sBuilder = new StringBuilder();
                 }

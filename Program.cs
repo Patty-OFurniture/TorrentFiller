@@ -53,6 +53,8 @@ internal class Program
         fileList = GetFiles(searchRoot, "*");
         Console.WriteLine($"Found {fileList.Count()} files...");
 
+        Console.WriteLine("");
+
         files = fileList.ToLookup(f => (int) f.Length, f => f);
 
         fileList = new List<FileInfo>(); // probably unnecessary
@@ -61,13 +63,8 @@ internal class Program
         {
             Console.WriteLine(torrentFile.Name);
             ParseTorrent(torrentFile.FullName);
+            Console.WriteLine("");
         }
-
-        // unit test
-        //int fileSize = 52624;
-        //int offset = 6081;
-        //var fileName = FindFile(searchRoot, pieceLength, offset, fileSize);
-        //Console.WriteLine(fileName);
 
         return;
     }
