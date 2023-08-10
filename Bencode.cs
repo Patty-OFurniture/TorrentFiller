@@ -136,9 +136,9 @@ namespace Torrent
                     // start hashing this many bytes into the file
                     fileOffset = 0 - pieceRemainder;
                     // file has this many bytes left over for the spanning hash
-                    fileRemainder = file.length + pieceRemainder;
+                    fileRemainder = file.length - fileOffset;
                     // piece needs this much of the next file
-                    pieceRemainder = data.info.piece_length + pieceRemainder;
+                    pieceRemainder = Math.Abs(fileRemainder) % data.info.piece_length;
                 }
                 else
                 {
