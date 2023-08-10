@@ -151,7 +151,6 @@ namespace Torrent
                     while (fileRemainder >= data.info.piece_length)
                     {
                         fileRemainder -= data.info.piece_length;
-                        // should happen for a well formed .torrent file
                         fileHash.PieceHashes.Add(pieceHashes.Dequeue());
                     }
 
@@ -166,6 +165,7 @@ namespace Torrent
                         files.TryDequeue(out file);
                         fileOffset = data.info.piece_length - fileRemainder;
                         fileRemainder = file.length - fileOffset;
+                        pieceRemainder = Math.Abs(fileRemainder) % data.info.piece_length;
                         Console.WriteLine(pieceHashes.Dequeue() + " [span]");
                     }
                 }
