@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
+using System.Numerics;
+using System.Security.Policy;
 using System.Text;
 using System.Threading.Tasks;
 using XSystem.Security.Cryptography;
@@ -55,6 +57,8 @@ namespace Torrent
         private long infohashStart = 0;
         private long infohashEnd = 0;
 
+        private static SHA1Managed sha1 = new SHA1Managed();
+
         public Bencode(string _path)
         {
             stream = null;
@@ -62,21 +66,30 @@ namespace Torrent
             indent = 0;
         }
 
+        public static string Hash(byte[] input, int offset, int count)
+        {
+            var hash = sha1.ComputeHash(input, offset, count);
+            var sb = new StringBuilder(hash.Length * 2);
+
+            foreach (byte b in hash)
+            {
+                sb.Append(b.ToString("x2"));
+            }
+
+            return sb.ToString();
+        }
+
         public static string Hash(byte[] input)
         {
-            using (SHA1Managed sha1 = new SHA1Managed())
+            var hash = sha1.ComputeHash(input);
+            var sb = new StringBuilder(hash.Length * 2);
+
+            foreach (byte b in hash)
             {
-                // convert char[] from StreamReader to byte[]
-                var hash = sha1.ComputeHash(input);
-                var sb = new StringBuilder(hash.Length * 2);
-
-                foreach (byte b in hash)
-                {
-                    sb.Append(b.ToString("x2"));
-                }
-
-                return sb.ToString();
+                sb.Append(b.ToString("x2"));
             }
+
+            return sb.ToString();
         }
 
         public string? GetInfoHash()
@@ -100,61 +113,77 @@ namespace Torrent
             if (data.info.files == null || data.info.files.Count < 1)
                 return fileHashList;
 
+            Console.WriteLine("Files:");
+            Queue<TorrentFile> files = new Queue<TorrentFile>();
+            for (int filesIndex = 0; filesIndex < data.info.files.Count; filesIndex++)
+            {
+                files.Enqueue(data.info.files[filesIndex]);
+                Console.WriteLine(data.info.files[filesIndex].length+ "\t" + data.info.files[filesIndex].path);
+            }
+            Console.WriteLine("");
+
+            Console.WriteLine("Pieces:");
             Queue<string> pieceHashes = new Queue<string>();
             for (int pieceIndex = 0; pieceIndex < data.info.pieces.Count; pieceIndex++)
             {
                 pieceHashes.Enqueue(data.info.pieces[pieceIndex]);
+                Console.WriteLine(data.info.pieces[pieceIndex]);
             }
-            Queue<TorrentFile> files = new Queue<TorrentFile>();
-            for(int filesIndex = 0; filesIndex < data.info.files.Count; filesIndex++)
-            {
-                files.Enqueue(data.info.files[filesIndex]);
-            }
+            Console.WriteLine("");
 
             var file = files.Dequeue();
 
-            int pieceRemainder = data.info.piece_length;
-            int fileOffset = 0;
-            int fileRemainder = file.length;
+            long bytesProcessed = 0;
+            long fileProcessed = 0;
+            int lastHashOffset = 0;
 
             // either a file spans pieces, or pieces span a file
             // files gets Dequeued at the end of the loop, so zero is fine
-            while(files.Count >= 0 && pieceHashes.Count > 0)
+            while (files.Count >= 0 && pieceHashes.Count > 0)
             {
                 // comsume files up to piece size
-                if (fileRemainder < pieceRemainder)
+                if (file.length < data.info.piece_length)
                 {
+                    int pieceRemainder = data.info.piece_length - file.length;
                     do
                     {
-                        pieceRemainder -= file.length;
+                        fileProcessed += file.length;
                         file = files.Dequeue();
+                        // save before it goes negative
+                        lastHashOffset = pieceRemainder;
+                        pieceRemainder -= file.length;
                     } while (pieceRemainder > 0);
 
                     // spanning hashes get thrown away
-                    Console.WriteLine(pieceHashes.Dequeue() + " [span]");
+                    pieceHashes.Dequeue();
+                    bytesProcessed += data.info.piece_length;
 
                     // start hashing this many bytes into the file
-                    fileOffset = 0 - pieceRemainder;
                     // file has this many bytes left over for the spanning hash
-                    fileRemainder = file.length - fileOffset;
+                    //long fileRemainder = file.length % data.info.piece_length;
                     // piece needs this much of the next file
-                    pieceRemainder = Math.Abs(fileRemainder) % data.info.piece_length;
                 }
                 else
                 {
                     FileHash fileHash = new FileHash();
                     fileHash.Path = file.path;
                     fileHash.FileLength = file.length;
-                    fileHash.HashOffset = fileOffset;
+                    fileHash.HashOffset = lastHashOffset;
                     fileHash.PieceHashes = new List<string>();
 
+                    long fileRemainder = fileHash.FileLength - fileHash.HashOffset;
                     while (fileRemainder >= data.info.piece_length)
                     {
+                        fileProcessed += data.info.piece_length;
                         fileRemainder -= data.info.piece_length;
-                        fileHash.PieceHashes.Add(pieceHashes.Dequeue());
+                        if (pieceHashes.TryDequeue(out var hash))
+                        {
+                            //Console.WriteLine(hash);
+                            fileHash.PieceHashes.Add(hash);
+                            //fileHash.PieceHashes.Add(pieceHashes.Dequeue());
+                        }
+                        bytesProcessed += data.info.piece_length;
                     }
-
-                    Console.WriteLine(fileHash.FileLength + " " + fileHash.Path);
 
                     fileHashList.Add(fileHash);
 
@@ -162,11 +191,12 @@ namespace Torrent
                     // and throw away the file-spanning hash
                     if (fileRemainder > 0)
                     {
+                        //fileRemainder = file.length - (int)(bytesProcessed % data.info.piece_length);
+                        lastHashOffset = (int) (data.info.piece_length - fileRemainder);
+                        fileProcessed += fileRemainder;
                         files.TryDequeue(out file);
-                        fileOffset = data.info.piece_length - fileRemainder;
-                        fileRemainder = file.length - fileOffset;
-                        pieceRemainder = Math.Abs(fileRemainder) % data.info.piece_length;
-                        Console.WriteLine(pieceHashes.Dequeue() + " [span]");
+                        pieceHashes.TryDequeue(out _);
+                        bytesProcessed += data.info.piece_length;
                     }
                 }
             }
@@ -223,7 +253,6 @@ namespace Torrent
                 sBuilder.Append(pieces[i].ToString("x2"));
                 if (sBuilder.Length == 40)
                 {
-                    Console.WriteLine(new string(' ', indent) + sBuilder.ToString());
                     pieceList.Add(sBuilder.ToString());
                     sBuilder = new StringBuilder();
                 }
@@ -292,7 +321,6 @@ namespace Torrent
                     {
                         torrentData.announce_list.Add(s.ToString());
                     }
-                    
                 }
 
                 key = "creation date";
@@ -316,9 +344,9 @@ namespace Torrent
                 stream = System.IO.File.OpenRead(path);
                 status = true;
             }
-            catch (Exception)
+            catch (Exception e)
             {
-
+                Console.Write(e);
             }
 
             return status;
@@ -416,36 +444,15 @@ namespace Torrent
             int stringLength = Convert.ToInt32(sb.ToString());
             byte[] bytes = new byte[stringLength];
 
-#if true
             for (int i = 0; i < stringLength; i++)
             {
-                char ch = (char)stream.ReadByte();
-                bytes[i] = (byte)ch;
+                char ch = (char) stream.ReadByte();
+                bytes[i] = (byte) ch;
             }
 
             string result = System.Text.Encoding.UTF8.GetString(bytes);
             return result;
         }
-#else
-            bool isAscii = true;
-            for (int i = 0; i <  stringLength; i++)
-            {
-                char ch = (char) stream.ReadByte();
-                if (!char.IsLetterOrDigit(ch) && !char.IsPunctuation(ch) && !char.IsWhiteSpace(ch))
-                    isAscii = false;
-
-                bytes[i] = (byte) ch;
-            }
-
-            if (isAscii)
-            {
-                string result = System.Text.Encoding.UTF8.GetString(bytes);
-                return result;
-            }
-
-            return bytes;
-        }
-#endif
 
         public object Read(string? key = null)
         {

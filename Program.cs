@@ -1,4 +1,5 @@
 ﻿// See https://aka.ms/new-console-template for more information
+using System;
 using System.IO;
 using System.Text;
 using XSystem.Security.Cryptography;
@@ -6,6 +7,7 @@ using XSystem.Security.Cryptography;
 internal class Program
 {
     private static string searchRoot = "";
+    private static bool tryUniqueSize = false;
 
     // get the list of files to search once
     private static IEnumerable<FileInfo> fileList = new List<FileInfo>();
@@ -14,6 +16,55 @@ internal class Program
     [STAThread]
     private static void Main(string[] args)
     {
+#if false
+        string[] hashes =
+        {
+        };
+
+        string fileName = @"";
+        int pieceLength = 32 * 1024;
+        using (var stream = File.OpenRead(fileName))
+        using (var reader = new BinaryReader(stream))
+        {
+
+            if (stream.Length >= pieceLength && stream.Length <= (1024*1024*4)) // 4MB
+            {
+                var buffer = new byte[stream.Length];
+                reader.Read(buffer, 0, (int) stream.Length);
+                for (int i = 0; 1 < stream.Length - pieceLength; i++)
+                {
+                    stream.Position = i;
+                    var hash = Torrent.Bencode.Hash(buffer, i, pieceLength);
+                    Console.WriteLine($"{i}\t{hash}");
+                    if (hashes.Contains(hash))
+                    {
+                        Console.WriteLine($"{hash}\t{stream.Position - pieceLength}");
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                var buffer = new byte[pieceLength];
+                for (int i = 0; 1 < stream.Length - pieceLength; i++)
+                {
+                    stream.Position = i;
+                    while (pieceLength == reader.Read(buffer, 0, pieceLength))
+                    {
+                        var hash = Torrent.Bencode.Hash(buffer);
+                        Console.WriteLine($"{i}\t{hash}");
+                        if (hashes.Contains(hash))
+                        {
+                            Console.WriteLine($"{hash}\t{stream.Position - pieceLength}");
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        return;
+#endif
+
         if (args.Length < 1)
         {
             var folder = HashTester.UI.RequestFolder();
@@ -45,13 +96,13 @@ internal class Program
         var dir = new DirectoryInfo(searchRoot);
         var torrentFiles = dir.GetFiles("*.torrent");
 #endif
-        Console.WriteLine($"Found {torrentFiles.Count()} torrents...");
+        Console.WriteLine($"Found {torrentFiles.Count()} torrent{(torrentFiles.Count() > 1 ? "s" : "")}...");
 
         Console.WriteLine("");
 
         Console.WriteLine("Finding files...");
         fileList = GetFiles(searchRoot, "*");
-        Console.WriteLine($"Found {fileList.Count()} files...");
+        Console.WriteLine($"Found {fileList.Count()} file{(fileList.Count() > 1 ? "s" : "")}...");
 
         Console.WriteLine("");
 
@@ -79,19 +130,14 @@ internal class Program
             {
                 var d = reader.Read() as IDictionary<string, object>;
                 var t = reader.CreateTorrentData(d);
-                var h = reader.CreateFileHashList(t);
                 var infoHash = reader.GetInfoHash();
 
                 Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {t.info.piece_length} Pieces: {t.info.pieces.Count}");
-
-                // files may not be sorted in a logical order, display them in hash order
-                foreach (var f in t.info.files)
-                {
-                    Console.WriteLine($"{f.length} {f.path}");
-                }
                 Console.WriteLine("");
 
                 int pieces = 0;
+
+                var h = reader.CreateFileHashList(t);
 
                 foreach (var v in h)
                 {
@@ -143,20 +189,27 @@ internal class Program
     {
         string result = "";
         bool hashMatched = false;
+        long bytesProcessed = 0;
 
         if (files.Contains(fileHash.FileLength))
         {
             // HACK: copy when size matches, and there's only 1 file that size
-            if (files[fileHash.FileLength].Count() == 1
-                && pieceLength > fileHash.FileLength)
+            if (tryUniqueSize)
             {
-                return files[fileHash.FileLength].First().FullName;
+                if (files[fileHash.FileLength].Count() == 1
+                    && pieceLength > fileHash.FileLength)
+                {
+                    var file = files[fileHash.FileLength].First();
+                    bytesProcessed += file.Length;
+                    return file.FullName;
+                }
             }
 
             foreach (var fileInfo in files[fileHash.FileLength])
             {
                 // files under piece size
                 // TODO: second pass, hash in order of info block
+                Console.WriteLine($"{fileHash.FileLength}\t{fileInfo.FullName}");
                 if (fileHash.HashOffset + pieceLength > fileInfo.Length)
                 {
                     continue;
@@ -173,7 +226,7 @@ internal class Program
                         try
                         {
                             if (fileHash.HashOffset > 0 && stream.Length >= fileHash.HashOffset)
-                                reader.Read(buffer, 0, fileHash.HashOffset);
+                                bytesProcessed += reader.Read(buffer, 0, fileHash.HashOffset);
                         }
                         catch (Exception e)
                         {
@@ -184,6 +237,8 @@ internal class Program
 
                         while (pieceLength == reader.Read(buffer, 0, pieceLength))
                         {
+                            bytesProcessed += pieceLength;
+
                             // just skip the rest of this file
                             if (pieceIndex >= fileHash.PieceHashes.Count)
                                 break;
@@ -194,8 +249,10 @@ internal class Program
                             Console.WriteLine("");
                             // any piece matched is a potential fill
                             // could break here, but reporting all hashes for dev purposes
-                            if (hash == fileHash.PieceHashes[pieceIndex++])
+                            if (hash == fileHash.PieceHashes[pieceIndex])
                                 hashMatched = true;
+
+                            pieceIndex++;
                         }
                     }
                 } 
