@@ -9,6 +9,7 @@ namespace HashTester
 {
     internal class UI
     {
+#if UI_WINDOWS
         public static string? RequestFolder()
         {
             string? result = null;
@@ -27,5 +28,21 @@ namespace HashTester
             }
             return result;
         }
+#else
+        public static string? RequestFolder()
+        {
+            string? result = null;
+
+            do
+            {
+                // write to stderror in case stdout is piped
+                Console.Error.WriteLine("Folder to examine:");
+                result = Console.ReadLine();
+            }
+            while (!Directory.Exists(result));
+
+            return result;
+        }
+#endif
     }
 }
