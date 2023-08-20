@@ -145,14 +145,15 @@ namespace Torrent
                 if (file.length < data.info.piece_length)
                 {
                     int pieceRemainder = data.info.piece_length - file.length;
-                    do
+                    fileProcessed += file.length;
+                    while (pieceRemainder > 0 && files.Count > 0)
                     {
-                        fileProcessed += file.length;
                         file = files.Dequeue();
                         // save before it goes negative
                         lastHashOffset = pieceRemainder;
                         pieceRemainder -= file.length;
-                    } while (pieceRemainder > 0);
+                        fileProcessed += file.length;
+                    };
 
                     // spanning hashes get thrown away
                     pieceHashes.Dequeue();
