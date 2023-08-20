@@ -8,10 +8,12 @@ internal class Program
 {
     private static string searchRoot = "";
     private static bool tryUniqueSize = false;
+    private static bool deepTorrent = true;
 
     // get the list of files to search once
     private static IEnumerable<FileInfo> fileList = new List<FileInfo>();
     private static ILookup<int, FileInfo> files = null;
+    private static IList<string> InfoHashes = new List<string>();
 
     [STAThread]
     private static void Main(string[] args)
@@ -65,7 +67,22 @@ internal class Program
         return;
 #endif
 
-        if (args.Length < 1)
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith("-"))
+            {
+                if (arg.ToLower() == "-u" || arg.ToLower() == "-tryuniquesize")
+                    tryUniqueSize = true;
+                if (arg.ToLower() == "-d" || arg.ToLower() == "-deeptorrent")
+                    deepTorrent = true;
+                if (arg.ToLower() == "-s" || arg.ToLower() == "-nodeeptorrent")
+                    deepTorrent = false;
+            }
+            else
+                searchRoot = arg;
+        }
+
+        if (args.Length < 1 || searchRoot == "")
         {
             var folder = HashTester.UI.RequestFolder();
             if (folder != null)
@@ -78,10 +95,6 @@ internal class Program
                 return;
             }
         } 
-        else
-        {
-            searchRoot = args[0];
-        }
 
         if (!Directory.Exists(searchRoot))
         {
@@ -133,6 +146,13 @@ internal class Program
                 var infoHash = reader.GetInfoHash();
 
                 Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {t.info.piece_length} Pieces: {t.info.pieces.Count}");
+                if (InfoHashes.Contains(infoHash))
+                {
+                    Console.WriteLine("Duplicate InfoHash, skipping");
+                    return false;
+                }
+                InfoHashes.Add(infoHash);
+
                 Console.WriteLine("");
 
                 int pieces = 0;
@@ -171,8 +191,18 @@ internal class Program
 
                         if (!File.Exists(destination))
                             File.Copy(fileName, destination, false);
+                        else
+                        {
+                            Console.WriteLine($"File exists: {destination}");
+                        }
                     }
                 }
+
+                // TODO: second pass, for files that can't be hashed on their own
+                // step 1, save the filenames and hashes instead of throwing them away
+                // step 2, try each file if the file size fits,
+                // //      and there is a previous/next file as needed
+
                 Console.WriteLine($"Piece hashes: {pieces}");
             }
             result = true;
@@ -188,7 +218,7 @@ internal class Program
     static string FindFile(string root, int pieceLength, Torrent.FileHash fileHash)
     {
         string result = "";
-        bool hashMatched = false;
+        int hashMatched = 0;
         long bytesProcessed = 0;
 
         if (files.Contains(fileHash.FileLength))
@@ -196,11 +226,9 @@ internal class Program
             // HACK: copy when size matches, and there's only 1 file that size
             if (tryUniqueSize)
             {
-                if (files[fileHash.FileLength].Count() == 1
-                    && pieceLength > fileHash.FileLength)
+                if (files[fileHash.FileLength].Count() == 1)
                 {
                     var file = files[fileHash.FileLength].First();
-                    bytesProcessed += file.Length;
                     return file.FullName;
                 }
             }
@@ -250,7 +278,7 @@ internal class Program
                             // any piece matched is a potential fill
                             // could break here, but reporting all hashes for dev purposes
                             if (hash == fileHash.PieceHashes[pieceIndex])
-                                hashMatched = true;
+                                hashMatched++;
 
                             pieceIndex++;
                         }
@@ -262,7 +290,7 @@ internal class Program
                     Console.WriteLine(e);
                 }
 
-                if (hashMatched)
+                if (hashMatched > 0)
                     result = fileInfo.FullName;
             }
         }
