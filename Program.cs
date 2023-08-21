@@ -8,11 +8,11 @@ internal class Program
 {
     private static string searchRoot = "";
     private static bool tryUniqueSize = false;
-    private static bool deepTorrent = true;
+    private static bool deepTorrent = false;
 
     // get the list of files to search once
     private static IEnumerable<FileInfo> fileList = new List<FileInfo>();
-    private static ILookup<int, FileInfo> files = null;
+    private static ILookup<int, FileInfo>? files = null;
     private static IList<string> InfoHashes = new List<string>();
 
     [STAThread]
@@ -103,12 +103,18 @@ internal class Program
         }
 
         Console.WriteLine("Finding torrents...");
-#if !DeepTorrent
-        var torrentFiles = GetFiles(searchRoot, "*.torrent");
-#else
-        var dir = new DirectoryInfo(searchRoot);
-        var torrentFiles = dir.GetFiles("*.torrent");
-#endif
+
+        IEnumerable<FileInfo> torrentFiles;
+
+        if (deepTorrent)
+        {
+            torrentFiles = GetFiles(searchRoot, "*.torrent");
+        }
+        else
+        {
+            var dir = new DirectoryInfo(searchRoot);
+            torrentFiles = dir.GetFiles("*.torrent");
+        }
         Console.WriteLine($"Found {torrentFiles.Count()} torrent{(torrentFiles.Count() > 1 ? "s" : "")}...");
 
         Console.WriteLine("");
@@ -121,7 +127,7 @@ internal class Program
 
         files = fileList.ToLookup(f => (int) f.Length, f => f);
 
-        fileList = new List<FileInfo>(); // probably unnecessary
+        fileList = new List<FileInfo>(); // release memory, probably unnecessary
 
         foreach (var torrentFile in torrentFiles)
         {
@@ -164,18 +170,11 @@ internal class Program
                     pieces += v.PieceHashes.Count;
 
                     Console.WriteLine($"{Environment.NewLine}{v.Path} {v.FileLength} o {v.HashOffset} c {v.PieceHashes.Count}");
-                    //if (v.Path == "System.Collections.Generic.List`1[System.Object]")
-                        //System.Diagnostics.Debugger.Break();
-
-                    //foreach (var z in v.PieceHashes)
-                    //{
-                    //    Console.WriteLine(z);
-                    //}
 
                     var fileName = FindFile(searchRoot, t.info.piece_length, v);
                     if (!string.IsNullOrEmpty(fileName))
                     {
-                        Console.WriteLine($"Found: {fileName}");
+                        Console.WriteLine($"Found: {v.Path} as {fileName}");
                         string destination = Path.Combine(t.info.name, v.Path);
 
                         // CreateDirectory() Creates all directories and subdirectories
@@ -192,9 +191,7 @@ internal class Program
                         if (!File.Exists(destination))
                             File.Copy(fileName, destination, false);
                         else
-                        {
                             Console.WriteLine($"File exists: {destination}");
-                        }
                     }
                 }
 
@@ -219,7 +216,6 @@ internal class Program
     {
         string result = "";
         int hashMatched = 0;
-        long bytesProcessed = 0;
 
         if (files.Contains(fileHash.FileLength))
         {
@@ -251,22 +247,8 @@ internal class Program
                     using (var stream = File.OpenRead(fileInfo.FullName))
                     using (var reader = new BinaryReader(stream))
                     {
-                        try
-                        {
-                            if (fileHash.HashOffset > 0 && stream.Length >= fileHash.HashOffset)
-                                bytesProcessed += reader.Read(buffer, 0, fileHash.HashOffset);
-                        }
-                        catch (Exception e)
-                        {
-                            // not sure what triggers this
-                            // added stream.Length >= fileHash.HashOffset test above, but how does it get that way?
-                            Console.WriteLine(e);
-                        }
-
                         while (pieceLength == reader.Read(buffer, 0, pieceLength))
                         {
-                            bytesProcessed += pieceLength;
-
                             // just skip the rest of this file
                             if (pieceIndex >= fileHash.PieceHashes.Count)
                                 break;
@@ -276,7 +258,6 @@ internal class Program
                             Console.WriteLine(fileHash.PieceHashes[pieceIndex]);
                             Console.WriteLine("");
                             // any piece matched is a potential fill
-                            // could break here, but reporting all hashes for dev purposes
                             if (hash == fileHash.PieceHashes[pieceIndex])
                                 hashMatched++;
 
@@ -319,7 +300,7 @@ internal class Program
             FileInfo[] files = null;
             try
             {
-                //                files = Directory.GetFiles(path, wildcard);
+                // files = Directory.GetFiles(path, wildcard);
                 var dir = new DirectoryInfo(path);
                 files = dir.GetFiles(wildcard);
             }
