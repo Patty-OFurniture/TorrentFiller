@@ -7,12 +7,12 @@ using XSystem.Security.Cryptography;
 internal class Program
 {
     private static string searchRoot = "";
-    private static bool tryUniqueSize = false;
+    private static bool tryUniqueSize = true;
     private static bool deepTorrent = false;
 
     // get the list of files to search once
     private static IEnumerable<FileInfo> fileList = new List<FileInfo>();
-    private static ILookup<int, FileInfo>? files = null;
+    private static ILookup<int, FileInfo>? filesLookup = null;
     private static IList<string> InfoHashes = new List<string>();
 
     [STAThread]
@@ -125,7 +125,7 @@ internal class Program
 
         Console.WriteLine("");
 
-        files = fileList.ToLookup(f => (int) f.Length, f => f);
+        filesLookup = fileList.ToLookup(f => (int) f.Length, f => f);
 
         fileList = new List<FileInfo>(); // release memory, probably unnecessary
 
@@ -151,7 +151,21 @@ internal class Program
                 var t = reader.CreateTorrentData(d);
                 var infoHash = reader.GetInfoHash();
 
-                Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {t.info.piece_length} Pieces: {t.info.pieces.Count}");
+                int piecesize = t.info.piece_length;
+                string pieceString = "bytes";
+
+                if (piecesize == (piecesize / 1024 * 1024))
+                {
+                    piecesize = piecesize / 1024;
+                    pieceString = "kB";
+                    if (piecesize == (piecesize / 1024 * 1024))
+                    {
+                        piecesize = piecesize / 1024;
+                        pieceString = "mB";
+                    }
+                }
+
+                Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {piecesize} {pieceString} Pieces: {t.info.pieces.Count}");
                 if (InfoHashes.Contains(infoHash))
                 {
                     Console.WriteLine("Duplicate InfoHash, skipping");
@@ -217,19 +231,19 @@ internal class Program
         string result = "";
         int hashMatched = 0;
 
-        if (files.Contains(fileHash.FileLength))
+        if (filesLookup.Contains(fileHash.FileLength))
         {
             // HACK: copy when size matches, and there's only 1 file that size
             if (tryUniqueSize)
             {
-                if (files[fileHash.FileLength].Count() == 1)
+                if (filesLookup[fileHash.FileLength].Count() == 1)
                 {
-                    var file = files[fileHash.FileLength].First();
+                    var file = filesLookup[fileHash.FileLength].First();
                     return file.FullName;
                 }
             }
 
-            foreach (var fileInfo in files[fileHash.FileLength])
+            foreach (var fileInfo in filesLookup[fileHash.FileLength])
             {
                 // files under piece size
                 // TODO: second pass, hash in order of info block
@@ -247,6 +261,7 @@ internal class Program
                     using (var stream = File.OpenRead(fileInfo.FullName))
                     using (var reader = new BinaryReader(stream))
                     {
+                        reader.Read(buffer, 0, fileHash.HashOffset);
                         while (pieceLength == reader.Read(buffer, 0, pieceLength))
                         {
                             // just skip the rest of this file
