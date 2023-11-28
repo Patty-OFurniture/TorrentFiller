@@ -1,5 +1,4 @@
-﻿// See https://aka.ms/new-console-template for more information
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
 using XSystem.Security.Cryptography;
@@ -7,8 +6,9 @@ using XSystem.Security.Cryptography;
 internal class Program
 {
     private static string searchRoot = "";
-    private static bool tryUniqueSize = true;
+    private static bool tryUniqueSize = false;
     private static bool deepTorrent = false;
+    private static string torrentSearch = "*.torrent";
 
     // get the list of files to search once
     private static IEnumerable<FileInfo> fileList = new List<FileInfo>();
@@ -108,12 +108,12 @@ internal class Program
 
         if (deepTorrent)
         {
-            torrentFiles = GetFiles(searchRoot, "*.torrent");
+            torrentFiles = GetFiles(searchRoot, torrentSearch);
         }
         else
         {
             var dir = new DirectoryInfo(searchRoot);
-            torrentFiles = dir.GetFiles("*.torrent");
+            torrentFiles = dir.GetFiles(torrentSearch);
         }
         Console.WriteLine($"Found {torrentFiles.Count()} torrent{(torrentFiles.Count() > 1 ? "s" : "")}...");
 
@@ -275,6 +275,8 @@ internal class Program
                             // any piece matched is a potential fill
                             if (hash == fileHash.PieceHashes[pieceIndex])
                                 hashMatched++;
+                            else
+                                Console.WriteLine(""); // for breakpoint mostly
 
                             pieceIndex++;
                         }
