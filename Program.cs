@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Text;
+using Torrent;
 using XSystem.Security.Cryptography;
 
 internal class Program
@@ -166,14 +167,14 @@ internal class Program
                 }
 
                 Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {piecesize} {pieceString} Pieces: {t.info.pieces.Count}");
+                Console.WriteLine("");
                 if (InfoHashes.Contains(infoHash))
                 {
                     Console.WriteLine("Duplicate InfoHash, skipping");
                     return false;
                 }
-                InfoHashes.Add(infoHash);
 
-                Console.WriteLine("");
+                InfoHashes.Add(infoHash);
 
                 int pieces = 0;
 
@@ -185,7 +186,8 @@ internal class Program
 
                     Console.WriteLine($"{Environment.NewLine}{v.Path} {v.FileLength} o {v.HashOffset} c {v.PieceHashes.Count}");
 
-                    var fileName = FindFile(searchRoot, t.info.piece_length, v);
+                    var fileName = FindFile(t.info.piece_length, v);
+
                     if (!string.IsNullOrEmpty(fileName))
                     {
                         Console.WriteLine($"Found: {v.Path} as {fileName}");
@@ -202,10 +204,10 @@ internal class Program
                                 Directory.CreateDirectory(destinationPath);
                         }
 
-                        if (!File.Exists(destination))
-                            File.Copy(fileName, destination, false);
-                        else
+                        if (File.Exists(destination))
                             Console.WriteLine($"File exists: {destination}");
+                        else
+                            File.Copy(fileName, destination, false);
                     }
                 }
 
@@ -213,6 +215,46 @@ internal class Program
                 // step 1, save the filenames and hashes instead of throwing them away
                 // step 2, try each file if the file size fits,
                 // //      and there is a previous/next file as needed
+
+                // because CreateFileHashList() throws away files that can't be hashed
+                if (tryUniqueSize)
+                {
+                    foreach (var f in t.info.files)
+                    {
+                        var candidates = filesLookup[f.length];
+                        if (candidates.Count() < 1)
+                            continue;
+                        else
+                        {
+                            string destination = Path.Combine(t.info.name, f.path);
+
+                            // if it was found by hash, or was previously found, skip it
+                            if (File.Exists(destination))
+                                Console.WriteLine($"File exists: {destination}");
+                            else
+                            {
+                                string? fileName = null;
+                                candidates = candidates.Where(c => !c.FullName.Contains(destination, StringComparison.InvariantCultureIgnoreCase));
+
+                                if (candidates.Count() == 1)
+                                {
+                                    fileName = candidates.FirstOrDefault()?.FullName;
+                                    File.Copy(fileName, destination, false);
+                                }
+                                else
+                                {
+                                    // Count() == 0 will be handled here
+                                    foreach (var candidate in candidates)
+                                    {
+                                        // TODO: how to handle
+                                        // File.Copy(fileName, destination, false);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
 
                 Console.WriteLine($"Piece hashes: {pieces}");
             }
@@ -226,23 +268,13 @@ internal class Program
         return result;
     }
 
-    static string FindFile(string root, int pieceLength, Torrent.FileHash fileHash)
+    static string FindFile(int pieceLength, Torrent.FileHash fileHash)
     {
         string result = "";
         int hashMatched = 0;
 
         if (filesLookup.Contains(fileHash.FileLength))
         {
-            // HACK: copy when size matches, and there's only 1 file that size
-            if (tryUniqueSize)
-            {
-                if (filesLookup[fileHash.FileLength].Count() == 1)
-                {
-                    var file = filesLookup[fileHash.FileLength].First();
-                    return file.FullName;
-                }
-            }
-
             foreach (var fileInfo in filesLookup[fileHash.FileLength])
             {
                 // files under piece size
