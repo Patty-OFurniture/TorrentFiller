@@ -21,14 +21,14 @@ namespace Torrent
 
     public struct TorrentFile
     {
-        public int length;
+        public uint length;
         public string path;
     }
 
     public struct TorrentInfo
     {
         public string name;
-        public int piece_length;
+        public uint piece_length;
         public int is_private;
         public List<TorrentFile> files;
         public List<string> pieces; // 20-byte SHA1 hash
@@ -37,13 +37,13 @@ namespace Torrent
     public struct FileHash
     {
         // [info] -- TorrentInfo.files[].TorrentFile.length
-        public int FileLength;
+        public uint FileLength;
         // [info] -- TorrentInfo.files[].TorrentFile.path
         public string Path;
         // offset into the file where the first PieceHash starts
-        public int HashOffset;
+        public uint HashOffset;
         // [piece length] -- TorrentInfo.piece_length
-        public int PieceLength;
+        public uint PieceLength;
         // [pieces] -- lowercase SHA-1
         public List<string> PieceHashes;
     }
@@ -135,7 +135,7 @@ namespace Torrent
 
             long bytesProcessed = 0;
             long fileProcessed = 0;
-            int lastHashOffset = 0;
+            uint lastHashOffset = 0;
 
             // either a file spans pieces, or pieces span a file
             // files gets Dequeued at the end of the loop, so zero is fine
@@ -144,7 +144,7 @@ namespace Torrent
                 // comsume files up to piece size
                 if (file.length < data.info.piece_length)
                 {
-                    int pieceRemainder = data.info.piece_length - file.length;
+                    uint pieceRemainder = data.info.piece_length - file.length;
                     fileProcessed += file.length;
                     while (pieceRemainder > 0 && files.Count > 0)
                     {
@@ -193,7 +193,7 @@ namespace Torrent
                     if (fileRemainder > 0)
                     {
                         //fileRemainder = file.length - (int)(bytesProcessed % data.info.piece_length);
-                        lastHashOffset = (int) (data.info.piece_length - fileRemainder);
+                        lastHashOffset = (uint) (data.info.piece_length - fileRemainder);
                         fileProcessed += fileRemainder;
                         files.TryDequeue(out file);
                         pieceHashes.TryDequeue(out _);
@@ -217,7 +217,7 @@ namespace Torrent
                     {
                         IDictionary<string, object> d = (IDictionary<string, object>)i;
                         var t = new TorrentFile();
-                        t.length = Convert.ToInt32(d["length"]);
+                        t.length = Convert.ToUInt32(d["length"]);
                         if (d["path"] is IList<object>)
                         {
                             var pathList = d["path"] as IList<object>;
@@ -274,7 +274,7 @@ namespace Torrent
 
                 key = "piece length";
                 if (d.ContainsKey(key))
-                    torrentInfo.piece_length = (int) d[key];
+                    torrentInfo.piece_length = (uint) d[key];
 
                 key = "pieces";
                 if (d.ContainsKey(key))
@@ -295,7 +295,7 @@ namespace Torrent
                     file.path = torrentInfo.name;
                     key = "length";
                     if (d.ContainsKey(key))
-                        file.length = (int)d[key];
+                        file.length = (uint)d[key];
                     torrentInfo.files.Add(file);
                 }
             }
@@ -397,7 +397,7 @@ namespace Torrent
                 return items;
         }
 
-        private int ReadInt()
+        private uint ReadInt()
         {
             StringBuilder sb = new StringBuilder();
             int c = stream.ReadByte();
@@ -409,7 +409,7 @@ namespace Torrent
             }
             while (c != 'e');
 
-            return Convert.ToInt32(sb.ToString());
+            return Convert.ToUInt32(sb.ToString());
         }
 
         private object ReadBytes(int c)

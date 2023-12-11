@@ -19,7 +19,7 @@ namespace HashTester
         {
             string? result = null;
             var dlg = new FolderPicker();
-            dlg.InputPath = @"c:\windows\system32";
+            //dlg.InputPath = @"c:\windows\system32";
             if (dlg.ShowDialog(IntPtr.Zero) == true)
             {
                 result = dlg.ResultPath;
