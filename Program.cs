@@ -140,6 +140,20 @@ internal class Program
         return;
     }
 
+    static void EnsureDirectoryExists(string destination)
+    {
+        // CreateDirectory() Creates all directories and subdirectories
+        // in the specified path unless they already exist.
+        // Exists() is redundant, but coded this way for a breakpoint on CreateDirectory()
+        // but the filename may have part of the path
+        string? destinationPath = Path.GetDirectoryName(destination);
+        if (destinationPath != null)
+        {
+            if (!Directory.Exists(destinationPath))
+                Directory.CreateDirectory(destinationPath);
+        }
+    }
+
     static bool ParseTorrent(string torrentFile)
     {
         bool result = false;
@@ -193,21 +207,13 @@ internal class Program
                         Console.WriteLine($"Found: {v.Path} as {fileName}");
                         string destination = Path.Combine(t.info.name, v.Path);
 
-                        // CreateDirectory() Creates all directories and subdirectories
-                        // in the specified path unless they already exist.
-                        // Exists() is redundant, but coded this way for a breakpoint on CreateDirectory()
-                        // but the filename may have part of the path
-                        string? destinationPath = Path.GetDirectoryName(destination);
-                        if (destinationPath != null)
-                        {
-                            if (!Directory.Exists(destinationPath))
-                                Directory.CreateDirectory(destinationPath);
-                        }
-
                         if (File.Exists(destination))
                             Console.WriteLine($"File exists: {destination}");
                         else
+                        {
+                            EnsureDirectoryExists(destination);
                             File.Copy(fileName, destination, false);
+                        }
                     }
                 }
 
@@ -221,7 +227,7 @@ internal class Program
                 {
                     foreach (var f in t.info.files)
                     {
-                        var candidates = filesLookup[f.length];
+                        var candidates = filesLookup[f.length].ToList();
                         if (candidates.Count() < 1)
                             continue;
                         else
@@ -233,19 +239,41 @@ internal class Program
                                 Console.WriteLine($"File exists: {destination}");
                             else
                             {
+                                // filter out files that seem to be in torrent structure
                                 string? fileName = null;
-                                candidates = candidates.Where(c => !c.FullName.Contains(destination, StringComparison.InvariantCultureIgnoreCase));
+                                candidates = candidates
+                                    .Where(c => !c.FullName.Contains(destination, StringComparison.InvariantCultureIgnoreCase))
+                                    .ToList();
+
+                                if (candidates.Count() != 1)
+                                {
+                                    var sha1 = new List<string>();
+                                    for (int i = 0; i < candidates.Count; i++)
+                                    {
+                                        var candidate = candidates[i];
+                                        if (candidate.Length < (1024 * 1024 * 128)) // 128MB
+                                        {
+                                            fileName = candidate.FullName;
+                                            using (var stream = System.IO.File.OpenRead(fileName))
+                                            {
+                                                byte[] bytes = new byte[candidate.Length];
+                                                stream.Read(bytes, 0, (int)candidate.Length);
+                                                var s = Bencode.Hash(bytes);
+                                                if (sha1.Contains(s))
+                                                    candidates[i] = null;
+                                                else
+                                                    sha1.Add(s);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                candidates = candidates.Where(c => c != null).ToList();
 
                                 if (candidates.Count() == 1)
                                 {
-                                    string? destinationPath = Path.GetDirectoryName(destination);
-                                    if (destinationPath != null)
-                                    {
-                                        if (!Directory.Exists(destinationPath))
-                                            Directory.CreateDirectory(destinationPath);
-                                    }
-
-                                    fileName = candidates.FirstOrDefault()?.FullName;
+                                    EnsureDirectoryExists(destination);
+                                    fileName = candidates[0].FullName;
                                     File.Copy(fileName, destination, false);
                                 }
                                 else
@@ -254,13 +282,7 @@ internal class Program
                                     foreach (var candidate in candidates)
                                     {
                                         // TODO: how to handle
-                                        string? destinationPath = Path.GetDirectoryName(destination);
-                                        if (destinationPath != null)
-                                        {
-                                            if (!Directory.Exists(destinationPath))
-                                                Directory.CreateDirectory(destinationPath);
-                                        }
-
+                                        EnsureDirectoryExists(destination);
                                         fileName = candidate.FullName;
                                         File.Copy(fileName, destination, false);
                                         break;
