@@ -21,15 +21,15 @@ namespace Torrent
 
     public struct TorrentFile
     {
-        public uint length;
+        public ulong length;
         public string path;
     }
 
     public struct TorrentInfo
     {
         public string name;
-        public uint piece_length;
-        public uint is_private;
+        public ulong piece_length;
+        public ulong is_private;
         public List<TorrentFile> files;
         public List<string> pieces; // 20-byte SHA1 hash
     }
@@ -37,13 +37,13 @@ namespace Torrent
     public struct FileHash
     {
         // [info] -- TorrentInfo.files[].TorrentFile.length
-        public uint FileLength;
+        public ulong FileLength;
         // [info] -- TorrentInfo.files[].TorrentFile.path
         public string Path;
         // offset into the file where the first PieceHash starts
-        public  int HashOffset;
+        public ulong HashOffset;
         // [piece length] -- TorrentInfo.piece_length
-        public uint PieceLength;
+        public ulong PieceLength;
         // [pieces] -- lowercase SHA-1
         public List<string> PieceHashes;
     }
@@ -133,9 +133,9 @@ namespace Torrent
 
             var file = files.Dequeue();
 
-            long bytesProcessed = 0;
-            long fileProcessed = 0;
-             int lastHashOffset = 0;
+            ulong bytesProcessed = 0;
+            ulong fileProcessed = 0;
+             long lastHashOffset = 0;
 
             // either a file spans pieces, or pieces span a file
             // files gets Dequeued at the end of the loop, so zero is fine
@@ -144,14 +144,15 @@ namespace Torrent
                 // comsume files up to piece size
                 if (file.length < data.info.piece_length)
                 {
-                    int pieceRemainder = (int) data.info.piece_length - (int) file.length;
+                    long pieceRemainder = (long) (data.info.piece_length - file.length);
+                    // possible overflow warning
                     fileProcessed += file.length;
                     while (pieceRemainder > 0 && files.Count > 0)
                     {
                         file = files.Dequeue();
                         // save before it goes negative
                         lastHashOffset = pieceRemainder;
-                        pieceRemainder = pieceRemainder - (int) file.length;
+                        pieceRemainder = pieceRemainder - (long) file.length;
                         fileProcessed += file.length;
                     };
 
@@ -169,10 +170,10 @@ namespace Torrent
                     FileHash fileHash = new FileHash();
                     fileHash.Path = file.path;
                     fileHash.FileLength = file.length;
-                    fileHash.HashOffset = lastHashOffset;
+                    fileHash.HashOffset = (ulong) Math.Abs(lastHashOffset);
                     fileHash.PieceHashes = new List<string>();
 
-                    long fileRemainder = fileHash.FileLength - fileHash.HashOffset;
+                    ulong fileRemainder = fileHash.FileLength - fileHash.HashOffset;
                     while (fileRemainder >= data.info.piece_length)
                     {
                         fileProcessed += data.info.piece_length;
@@ -217,7 +218,7 @@ namespace Torrent
                     {
                         IDictionary<string, object> d = (IDictionary<string, object>)i;
                         var t = new TorrentFile();
-                        t.length = Convert.ToUInt32(d["length"]);
+                        t.length = Convert.ToUInt64(d["length"]);
                         if (d["path"] is IList<object>)
                         {
                             var pathList = d["path"] as IList<object>;
@@ -274,7 +275,7 @@ namespace Torrent
 
                 key = "piece length";
                 if (d.ContainsKey(key))
-                    torrentInfo.piece_length = (uint) d[key];
+                    torrentInfo.piece_length = (ulong) d[key];
 
                 key = "pieces";
                 if (d.ContainsKey(key))
@@ -282,7 +283,7 @@ namespace Torrent
 
                 key = "private";
                 if (d.ContainsKey(key))
-                    torrentInfo.is_private = (uint)d[key];
+                    torrentInfo.is_private = (ulong)d[key];
 
                 key = "files";
                 if (d.ContainsKey(key))
@@ -295,7 +296,7 @@ namespace Torrent
                     file.path = torrentInfo.name;
                     key = "length";
                     if (d.ContainsKey(key))
-                        file.length = (uint)d[key];
+                        file.length = (ulong)d[key];
                     torrentInfo.files.Add(file);
                 }
             }
@@ -397,7 +398,7 @@ namespace Torrent
                 return items;
         }
 
-        private uint ReadInt()
+        private ulong ReadInt()
         {
             StringBuilder sb = new StringBuilder();
             int c = stream.ReadByte();
@@ -409,7 +410,11 @@ namespace Torrent
             }
             while (c != 'e');
 
-            return Convert.ToUInt32(sb.ToString());
+            string temp = sb.ToString();
+            if (temp == "-1")
+                temp = "0";
+
+            return Convert.ToUInt64(temp);
         }
 
         private object ReadBytes(int c)
@@ -421,10 +426,10 @@ namespace Torrent
                 c = stream.ReadByte();
             }
 
-            int stringLength = Convert.ToInt32(sb.ToString());
+            ulong stringLength = Convert.ToUInt64(sb.ToString());
             byte[] bytes = new byte[stringLength];
 
-            for (int i = 0; i < stringLength; i++)
+            for (ulong i = 0; i < stringLength; i++)
             {
                 char ch = (char)stream.ReadByte();
                 bytes[i] = (byte)ch;
@@ -442,10 +447,10 @@ namespace Torrent
                 c = stream.ReadByte();
             }
 
-            int stringLength = Convert.ToInt32(sb.ToString());
+            ulong stringLength = Convert.ToUInt64(sb.ToString());
             byte[] bytes = new byte[stringLength];
 
-            for (int i = 0; i < stringLength; i++)
+            for (ulong i = 0; i < stringLength; i++)
             {
                 char ch = (char) stream.ReadByte();
                 bytes[i] = (byte) ch;

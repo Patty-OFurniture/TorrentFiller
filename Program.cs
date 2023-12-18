@@ -13,7 +13,7 @@ internal class Program
 
     // get the list of files to search once
     private static IEnumerable<FileInfo> fileList = new List<FileInfo>();
-    private static ILookup<uint, FileInfo>? filesLookup = null;
+    private static ILookup<ulong, FileInfo>? filesLookup = null;
     private static IList<string> InfoHashes = new List<string>();
 
     [STAThread]
@@ -126,7 +126,7 @@ internal class Program
 
         Console.WriteLine("");
 
-        filesLookup = fileList.ToLookup(f => (uint) f.Length, f => f);
+        filesLookup = fileList.ToLookup(f => (ulong) f.Length, f => f);
 
         fileList = new List<FileInfo>(); // release memory, probably unnecessary
 
@@ -166,7 +166,7 @@ internal class Program
                 var t = reader.CreateTorrentData(d);
                 var infoHash = reader.GetInfoHash();
 
-                uint piecesize = t.info.piece_length;
+                ulong piecesize = t.info.piece_length;
                 string pieceString = "bytes";
 
                 if (piecesize == (piecesize / 1024 * 1024))
@@ -215,6 +215,8 @@ internal class Program
                             File.Copy(fileName, destination, false);
                         }
                     }
+
+                    continue;
                 }
 
                 // TODO: second pass, for files that can't be hashed on their own
@@ -230,8 +232,9 @@ internal class Program
                         var candidates = filesLookup[f.length].ToList();
                         if (candidates.Count() < 1)
                             continue;
-                        else
+                        else if (f.length < (t.info.piece_length * 2))
                         {
+                            // piece_length * 2 should be hashable, this is for smaller files
                             string destination = Path.Combine(t.info.name, f.path);
 
                             // if it was found by hash, or was previously found, skip it
@@ -251,19 +254,16 @@ internal class Program
                                     for (int i = 0; i < candidates.Count; i++)
                                     {
                                         var candidate = candidates[i];
-                                        if (candidate.Length < (1024 * 1024 * 128)) // 128MB
+                                        fileName = candidate.FullName;
+                                        using (var stream = File.OpenRead(fileName))
                                         {
-                                            fileName = candidate.FullName;
-                                            using (var stream = System.IO.File.OpenRead(fileName))
-                                            {
-                                                byte[] bytes = new byte[candidate.Length];
-                                                stream.Read(bytes, 0, (int)candidate.Length);
-                                                var s = Bencode.Hash(bytes);
-                                                if (sha1.Contains(s))
-                                                    candidates[i] = null;
-                                                else
-                                                    sha1.Add(s);
-                                            }
+                                            byte[] bytes = new byte[candidate.Length];
+                                            stream.Read(bytes, 0, (int)candidate.Length);
+                                            var s = Bencode.Hash(bytes);
+                                            if (sha1.Contains(s))
+                                                candidates[i] = null;
+                                            else
+                                                sha1.Add(s);
                                         }
                                     }
                                 }
@@ -306,7 +306,7 @@ internal class Program
         return result;
     }
 
-    static string FindFile(uint pieceLength, Torrent.FileHash fileHash)
+    static string FindFile(ulong pieceLength, Torrent.FileHash fileHash)
     {
         string result = "";
         int hashMatched = 0;
@@ -318,7 +318,7 @@ internal class Program
                 // files under piece size
                 // TODO: second pass, hash in order of info block
                 Console.WriteLine($"{fileHash.FileLength}\t{fileInfo.FullName}");
-                if (fileHash.HashOffset + pieceLength > fileInfo.Length)
+                if (fileHash.HashOffset + pieceLength > fileHash.FileLength)
                 {
                     continue;
                 }
@@ -333,7 +333,7 @@ internal class Program
                     {
                         // TODO: why is this a signed int?
                         reader.Read(buffer, 0, (int) fileHash.HashOffset);
-                        while (pieceLength == reader.Read(buffer, 0, (int) pieceLength))
+                        while (pieceLength == (ulong) reader.Read(buffer, 0, (int) pieceLength))
                         {
                             // just skip the rest of this file
                             if (pieceIndex >= fileHash.PieceHashes.Count)
