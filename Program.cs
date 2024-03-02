@@ -1,15 +1,27 @@
 ﻿using System;
+using System.Drawing.Text;
 using System.IO;
 using System.Text;
+using HashTester.UI;
+using HashTester;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Torrent;
 using XSystem.Security.Cryptography;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+using System.Windows.Forms;
+using XAct;
 
 internal class Program
 {
-    private static string searchRoot = "";
-    private static bool tryUniqueSize = false;
-    private static bool deepTorrent = false;
-    private static string torrentSearch = "*.torrent";
+    internal class MatchOptions
+    {
+        public static string searchRoot = "";
+        public static bool tryUniqueSize = false;
+        public static bool deepTorrent = false;
+        public static string torrentSearch = "*.torrent";
+        public static bool verbose = false;
+    }
 
     // get the list of files to search once
     private static IEnumerable<FileInfo> fileList = new List<FileInfo>();
@@ -19,7 +31,25 @@ internal class Program
     [STAThread]
     private static void Main(string[] args)
     {
+
+        #region TestCode
 #if false
+        MatchOptions.searchRoot = ""; 
+        var targetRoot = "";
+
+        int i = MatchOptions.searchRoot.Length;
+        foreach (var file in GetFiles(MatchOptions.searchRoot, "*"))
+        {
+            var target = file.FullName.Substring(i);
+            if (!File.Exists(targetRoot + target))
+            {
+                System.Diagnostics.Debug.WriteLine(file.FullName);
+                // EnsureDirectoryExists(targetRoot + target);
+                // File.Copy(file.FullName, targetRoot + target, false);
+            }
+        }
+        return;
+
         string[] hashes =
         {
         };
@@ -67,61 +97,71 @@ internal class Program
         }
         return;
 #endif
+        #endregion TestCode
 
         foreach (var arg in args)
         {
+            string larg = arg.ToLower();
             if (arg.StartsWith("-"))
             {
-                if (arg.ToLower() == "-u" || arg.ToLower() == "-tryuniquesize")
-                    tryUniqueSize = true;
-                if (arg.ToLower() == "-d" || arg.ToLower() == "-deeptorrent")
-                    deepTorrent = true;
-                if (arg.ToLower() == "-s" || arg.ToLower() == "-nodeeptorrent")
-                    deepTorrent = false;
+                if (larg == "-u" || larg == "-tryuniquesize")
+                    MatchOptions.tryUniqueSize = true;
+                if (larg == "-d" || larg == "-deeptorrent")
+                    MatchOptions.deepTorrent = true;
+                if (larg == "-s" || larg == "-nodeeptorrent")
+                    MatchOptions.deepTorrent = false;
+                if (larg == "-v" || larg == "-verbose")
+                    MatchOptions.verbose = true;
             }
             else
-                searchRoot = arg;
+                MatchOptions.searchRoot = arg;
         }
 
-        if (args.Length < 1 || searchRoot == "")
+        if (args.Length < 1 || MatchOptions.searchRoot == "")
         {
-            var folder = HashTester.UI.RequestFolder();
+            var folder = UI.RequestFolder();
             if (folder != null)
             {
-                searchRoot = folder;
+                MatchOptions.searchRoot = folder;
             }
             else
             {
-                Console.WriteLine("Please pass an argument for the base path. Torrent contents and .torrent files will be searched from there");
+                Console.Error.WriteLine("Please pass an argument for the base path. Torrent contents and .torrent files will be searched from there");
                 return;
             }
         } 
 
-        if (!Directory.Exists(searchRoot))
+        if (!Directory.Exists(MatchOptions.searchRoot))
         {
-            Console.WriteLine($"Could not find: {searchRoot}");
+            Console.Error.WriteLine("Could not find: {MatchOptions.searchRoot}");
             return;
         }
+
+        Console.WriteLine($"searchRoot : {MatchOptions.searchRoot}");
+        Console.WriteLine($"tryUniqueSize : {MatchOptions.tryUniqueSize}");
+        Console.WriteLine($"deepTorrent : {MatchOptions.deepTorrent}");
+        Console.WriteLine($"deepTorrent : {MatchOptions.verbose}");
 
         Console.WriteLine("Finding torrents...");
 
         IEnumerable<FileInfo> torrentFiles;
 
-        if (deepTorrent)
+        if (MatchOptions.deepTorrent)
         {
-            torrentFiles = GetFiles(searchRoot, torrentSearch);
+            torrentFiles = GetFiles(MatchOptions.searchRoot, MatchOptions.torrentSearch);
         }
         else
         {
-            var dir = new DirectoryInfo(searchRoot);
-            torrentFiles = dir.GetFiles(torrentSearch);
+            var dir = new DirectoryInfo(MatchOptions.searchRoot);
+            torrentFiles = dir.GetFiles(MatchOptions.torrentSearch);
         }
+
         Console.WriteLine($"Found {torrentFiles.Count()} torrent{(torrentFiles.Count() > 1 ? "s" : "")}...");
 
         Console.WriteLine("");
 
         Console.WriteLine("Finding files...");
-        fileList = GetFiles(searchRoot, "*");
+        fileList = GetFiles(MatchOptions.searchRoot, "*");
         Console.WriteLine($"Found {fileList.Count()} file{(fileList.Count() > 1 ? "s" : "")}...");
 
         Console.WriteLine("");
@@ -130,12 +170,49 @@ internal class Program
 
         fileList = new List<FileInfo>(); // release memory, probably unnecessary
 
+        // ui hacks for progress visibility
+#if true
+        int progress = 0;
+        var textProgressBar = new TextProgressBar(20);
         foreach (var torrentFile in torrentFiles)
         {
+            if (!Console.IsOutputRedirected)
+            {
+                textProgressBar.WriteProgressBar(100 * progress++ / torrentFiles.Count());
+                Console.Write(" ");
+            }
+
             Console.WriteLine(torrentFile.Name);
-            ParseTorrent(torrentFile.FullName);
-            Console.WriteLine("");
+
+            ParseTorrent(torrentFile.FullName, MatchOptions.verbose);
         }
+
+        if (!Console.IsOutputRedirected)
+        {
+            textProgressBar.WriteProgressBar(100);
+            Console.WriteLine();
+        }
+
+#else
+        Console.Clear();
+        using (var progressBar = new HashTester.UI.ProgressBar())
+        {
+            string header = new string('*', Console.WindowWidth);
+
+            double progress = 0;
+            foreach (var torrentFile in torrentFiles)
+            {
+                if (Console.IsOutputRedirected)
+                {
+                    Console.WriteLine(torrentFile.Name);
+                    ParseTorrent(torrentFile.FullName, MatchOptions.verbose);
+                }
+                else
+                    progressBar.Report(progress++ / torrentFiles.Count());
+            }
+        }
+#endif
+        Console.WriteLine("Done");
 
         return;
     }
@@ -154,12 +231,12 @@ internal class Program
         }
     }
 
-    static bool ParseTorrent(string torrentFile)
+    static bool ParseTorrent(string torrentFile, bool verbose)
     {
         bool result = false;
         try
         {
-            var reader = new Torrent.Bencode(torrentFile);
+            var reader = new Torrent.Bencode(torrentFile, verbose);
             if (reader.OpenTorrent())
             {
                 var d = reader.Read() as IDictionary<string, object>;
@@ -180,11 +257,15 @@ internal class Program
                     }
                 }
 
-                Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {piecesize} {pieceString} Pieces: {t.info.pieces.Count}");
-                Console.WriteLine("");
+                if (MatchOptions.verbose)
+                {
+                    Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {piecesize} {pieceString} Pieces: {t.info.pieces.Count}");
+                    Console.WriteLine("");
+                }
                 if (InfoHashes.Contains(infoHash))
                 {
-                    Console.WriteLine("Duplicate InfoHash, skipping");
+                    if (MatchOptions.verbose)
+                        Console.Error.WriteLine($"Duplicate InfoHash {infoHash}, skipping");
                     return false;
                 }
 
@@ -198,21 +279,40 @@ internal class Program
                 {
                     pieces += v.PieceHashes.Count;
 
-                    Console.WriteLine($"{Environment.NewLine}{v.Path} {v.FileLength} o {v.HashOffset} c {v.PieceHashes.Count}");
+                    if (MatchOptions.verbose)
+                        Console.WriteLine($"{Environment.NewLine}{v.Path} {v.FileLength} o {v.HashOffset} c {v.PieceHashes.Count}");
 
                     var fileName = FindFile(t.info.piece_length, v);
 
                     if (!string.IsNullOrEmpty(fileName))
                     {
-                        Console.WriteLine($"Found: {v.Path} as {fileName}");
+                        if (MatchOptions.verbose)
+                            Console.WriteLine($"Found: {v.Path} as {fileName}");
+
                         string destination = Path.Combine(t.info.name, v.Path);
 
-                        if (File.Exists(destination))
-                            Console.WriteLine($"File exists: {destination}");
-                        else
+                        bool overwrite = false;
+
+                        try
                         {
-                            EnsureDirectoryExists(destination);
-                            File.Copy(fileName, destination, false);
+                            if (overwrite)
+                            {
+                                File.Copy(fileName, destination, overwrite);
+                            }
+                            else if (File.Exists(destination))
+                            {
+                                if (MatchOptions.verbose)
+                                    Console.WriteLine($"File exists: {destination}");
+                            }
+                            else
+                            {
+                                EnsureDirectoryExists(destination);
+                                File.Copy(fileName, destination, false);
+                            }
+                        }
+                        catch(Exception e)
+                        {
+                            Console.Error.WriteLine($"Error: {e}");
                         }
                     }
 
@@ -225,82 +325,90 @@ internal class Program
                 // //      and there is a previous/next file as needed
 
                 // because CreateFileHashList() throws away files that can't be hashed
-                if (tryUniqueSize)
+                if (MatchOptions. tryUniqueSize)
                 {
                     foreach (var f in t.info.files)
                     {
+                        // piece_length * 2 should be hashable, this is for smaller files
+                        if (f.length >= (t.info.piece_length * 2))
+                            continue;
+
                         var candidates = filesLookup[f.length].ToList();
+
                         if (candidates.Count() < 1)
                             continue;
-                        else if (f.length < (t.info.piece_length * 2))
+
+                        // relative path
+                        string destination = Path.Combine(t.info.name, f.path);
+
+                        // if it was found by hash, or was previously found, skip it
+                        if (File.Exists(destination))
                         {
-                            // piece_length * 2 should be hashable, this is for smaller files
-                            string destination = Path.Combine(t.info.name, f.path);
+                            Console.Error.WriteLine($"File exists: {destination}");
+                            continue;
+                        }
 
-                            // if it was found by hash, or was previously found, skip it
-                            if (File.Exists(destination))
-                                Console.WriteLine($"File exists: {destination}");
-                            else
+#if false
+                        // filter out files that seem to be in torrent structure
+                        candidates = candidates
+                            .Where(c => !c.FullName.Contains(destination, StringComparison.InvariantCultureIgnoreCase))
+                            .ToList();
+#endif
+                        // ignore duplicate files
+                        if (candidates.Count() > 1)
+                        {
+                            var sha1 = new List<string>();
+                            for (int i = 0; i < candidates.Count; i++)
                             {
-                                // filter out files that seem to be in torrent structure
-                                string? fileName = null;
-                                candidates = candidates
-                                    .Where(c => !c.FullName.Contains(destination, StringComparison.InvariantCultureIgnoreCase))
-                                    .ToList();
-
-                                if (candidates.Count() != 1)
+                                var candidate = candidates[i];
+                                using (var stream = File.OpenRead(candidate.FullName))
                                 {
-                                    var sha1 = new List<string>();
-                                    for (int i = 0; i < candidates.Count; i++)
-                                    {
-                                        var candidate = candidates[i];
-                                        fileName = candidate.FullName;
-                                        using (var stream = File.OpenRead(fileName))
-                                        {
-                                            byte[] bytes = new byte[candidate.Length];
-                                            stream.Read(bytes, 0, (int)candidate.Length);
-                                            var s = Bencode.Hash(bytes);
-                                            if (sha1.Contains(s))
-                                                candidates[i] = null;
-                                            else
-                                                sha1.Add(s);
-                                        }
-                                    }
-                                }
-
-                                candidates = candidates.Where(c => c != null).ToList();
-
-                                if (candidates.Count() == 1)
-                                {
-                                    EnsureDirectoryExists(destination);
-                                    fileName = candidates[0].FullName;
-                                    File.Copy(fileName, destination, false);
-                                }
-                                else
-                                {
-                                    // Count() == 0 will be handled here
-                                    foreach (var candidate in candidates)
-                                    {
-                                        // TODO: how to handle
-                                        EnsureDirectoryExists(destination);
-                                        fileName = candidate.FullName;
-                                        File.Copy(fileName, destination, false);
-                                        break;
-                                    }
+                                    byte[] bytes = new byte[candidate.Length];
+                                    stream.Read(bytes, 0, (int)candidate.Length);
+                                    var s = Bencode.Hash(bytes);
+                                    if (sha1.Contains(s))
+                                        candidates[i] = null;
+                                    else
+                                        sha1.Add(s);
                                 }
                             }
+                            candidates = candidates.Where(c => c != null).ToList();
+                        }
+
+                        try
+                        {
+                            if (candidates.Count() == 1)
+                            {
+                                EnsureDirectoryExists(destination);
+                                File.Copy(candidates[0].FullName, destination, false);
+                            }
+                            else
+                            {
+                                // Count() == 0 will be handled here
+                                foreach (var candidate in candidates)
+                                {
+                                    // TODO: how to handle
+                                    EnsureDirectoryExists(destination);
+                                    File.Copy(candidate.FullName, destination, false);
+                                    break;
+                                }
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            Console.Error.WriteLine($"Error: {e}");
                         }
                     }
                 }
 
-
-                Console.WriteLine($"Piece hashes: {pieces}");
+                if (MatchOptions.verbose)
+                    Console.WriteLine($"Piece hashes: {pieces}");
             }
             result = true;
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            Console.Error.WriteLine(e);
         }
 
         return result;
@@ -317,7 +425,9 @@ internal class Program
             {
                 // files under piece size
                 // TODO: second pass, hash in order of info block
-                Console.WriteLine($"{fileHash.FileLength}\t{fileInfo.FullName}");
+                if (MatchOptions.verbose)
+                    Console.WriteLine($"{fileHash.FileLength}\t{fileInfo.FullName}");
+
                 if (fileHash.HashOffset + pieceLength > fileHash.FileLength)
                 {
                     continue;
@@ -340,23 +450,29 @@ internal class Program
                                 break;
 
                             var hash = Torrent.Bencode.Hash(buffer);
-                            Console.WriteLine(hash);
-                            Console.WriteLine(fileHash.PieceHashes[pieceIndex]);
-                            Console.WriteLine("");
+                            if (MatchOptions.verbose)
+                            {
+                                Console.WriteLine(hash);
+                                Console.WriteLine(fileHash.PieceHashes[pieceIndex]);
+                                Console.WriteLine("");
+                            }
+
                             // any piece matched is a potential fill
                             if (hash == fileHash.PieceHashes[pieceIndex])
                                 hashMatched++;
-                            else
-                                Console.WriteLine(""); // for breakpoint mostly
 
                             pieceIndex++;
                         }
                     }
-                } 
-                catch(Exception e)
+                }
+                catch (System.IO.FileNotFoundException)
+                {
+                    Console.WriteLine($"Cannot open [{fileInfo.FullName}]");
+                }
+                catch (Exception e)
                 {
                     // sharing violation, probably
-                    Console.WriteLine(e);
+                    Console.Error.WriteLine(e);
                 }
 
                 if (hashMatched > 0)

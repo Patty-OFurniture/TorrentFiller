@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.Win32;
 
 
-namespace HashTester
+namespace HashTester.UI
 {
     internal class UI
     {
@@ -63,5 +63,5 @@ namespace HashTester
             return result;
         }
 #endif
-	}
+    }
 }

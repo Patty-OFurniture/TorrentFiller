@@ -56,14 +56,16 @@ namespace Torrent
 
         private long infohashStart = 0;
         private long infohashEnd = 0;
+        private bool verbose = false;
 
         private static SHA1Managed sha1 = new SHA1Managed();
 
-        public Bencode(string _path)
+        public Bencode(string _path, bool verbose)
         {
             stream = null;
             path = _path;
             indent = 0;
+            this.verbose = verbose;
         }
 
         public static string Hash(byte[] input, int offset, int count)
@@ -113,29 +115,37 @@ namespace Torrent
             if (data.info.files == null || data.info.files.Count < 1)
                 return fileHashList;
 
-            Console.WriteLine("Files:");
+            if(verbose)
+                Console.WriteLine("Files:");
+
             Queue<TorrentFile> files = new Queue<TorrentFile>();
             for (int filesIndex = 0; filesIndex < data.info.files.Count; filesIndex++)
             {
                 files.Enqueue(data.info.files[filesIndex]);
-                Console.WriteLine(data.info.files[filesIndex].length+ "\t" + data.info.files[filesIndex].path);
+                if (verbose)
+                    Console.WriteLine(data.info.files[filesIndex].length+ "\t" + data.info.files[filesIndex].path);
             }
-            Console.WriteLine("");
+            if (verbose)
+                Console.WriteLine("");
 
-            Console.WriteLine("Pieces:");
+            if (verbose)
+                Console.WriteLine("Pieces:");
+
             Queue<string> pieceHashes = new Queue<string>();
             for (int pieceIndex = 0; pieceIndex < data.info.pieces.Count; pieceIndex++)
             {
                 pieceHashes.Enqueue(data.info.pieces[pieceIndex]);
-                Console.WriteLine(data.info.pieces[pieceIndex]);
+                if (verbose)
+                    Console.WriteLine(data.info.pieces[pieceIndex]);
             }
-            Console.WriteLine("");
+            if (verbose)
+                Console.WriteLine("");
 
             var file = files.Dequeue();
 
             ulong bytesProcessed = 0;
             ulong fileProcessed = 0;
-             long lastHashOffset = 0;
+            long lastHashOffset = 0;
 
             // either a file spans pieces, or pieces span a file
             // files gets Dequeued at the end of the loop, so zero is fine
@@ -345,6 +355,11 @@ namespace Torrent
             {
                 stream = System.IO.File.OpenRead(path);
                 status = true;
+            }
+            catch(System.IO.FileNotFoundException)
+            {
+                //if (verbose)
+                    Console.WriteLine($"Cannot open [{path}]");
             }
             catch (Exception e)
             {
