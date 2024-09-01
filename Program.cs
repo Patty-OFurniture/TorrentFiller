@@ -167,6 +167,8 @@ internal class Program
         Console.WriteLine("");
 
         filesLookup = fileList.ToLookup(f => (ulong) f.Length, f => f);
+        if (filesLookup == null)
+            return;
 
         fileList = new List<FileInfo>(); // release memory, probably unnecessary
 
@@ -240,8 +242,17 @@ internal class Program
             if (reader.OpenTorrent())
             {
                 var d = reader.Read() as IDictionary<string, object>;
-                var t = reader.CreateTorrentData(d);
+                var t = Bencode.CreateTorrentData(d);
                 var infoHash = reader.GetInfoHash();
+
+                if (infoHash == null)
+                {
+                    if (MatchOptions.verbose)
+                    {
+                        Console.Error.WriteLine("InfoHash not found, skipping");
+                    }
+                    return false;
+                }
 
                 ulong piecesize = t.info.piece_length;
                 string pieceString = "bytes";
@@ -262,10 +273,14 @@ internal class Program
                     Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {piecesize} {pieceString} Pieces: {t.info.pieces.Count}");
                     Console.WriteLine("");
                 }
+
                 if (InfoHashes.Contains(infoHash))
                 {
                     if (MatchOptions.verbose)
+                    {
                         Console.Error.WriteLine($"Duplicate InfoHash {infoHash}, skipping");
+                        // System.IO.File.Delete(torrentFile);
+                    }
                     return false;
                 }
 
@@ -324,8 +339,14 @@ internal class Program
                 // step 2, try each file if the file size fits,
                 // //      and there is a previous/next file as needed
 
+                if (filesLookup == null || filesLookup.Count < 1)
+                {
+                    Console.Error.WriteLine($"{nameof(filesLookup)} contains nothing to find");
+                    return false;
+                }
+
                 // because CreateFileHashList() throws away files that can't be hashed
-                if (MatchOptions. tryUniqueSize)
+                if (MatchOptions.tryUniqueSize)
                 {
                     foreach (var f in t.info.files)
                     {
@@ -335,7 +356,7 @@ internal class Program
 
                         var candidates = filesLookup[f.length].ToList();
 
-                        if (candidates.Count() < 1)
+                        if (candidates.Count < 1)
                             continue;
 
                         // relative path
@@ -355,36 +376,35 @@ internal class Program
                             .ToList();
 #endif
                         // ignore duplicate files
-                        if (candidates.Count() > 1)
+                        if (candidates.Count > 1)
                         {
                             var sha1 = new List<string>();
                             for (int i = 0; i < candidates.Count; i++)
                             {
                                 var candidate = candidates[i];
-                                using (var stream = File.OpenRead(candidate.FullName))
-                                {
-                                    byte[] bytes = new byte[candidate.Length];
-                                    stream.Read(bytes, 0, (int)candidate.Length);
-                                    var s = Bencode.Hash(bytes);
-                                    if (sha1.Contains(s))
-                                        candidates[i] = null;
-                                    else
-                                        sha1.Add(s);
-                                }
+
+                                using var stream = File.OpenRead(candidate.FullName);
+                                byte[] bytes = new byte[candidate.Length];
+                                stream.Read(bytes, 0, (int)candidate.Length);
+                                var s = Bencode.Hash(bytes);
+                                if (sha1.Contains(s))
+                                    candidates[i] = null;
+                                else
+                                    sha1.Add(s);
                             }
                             candidates = candidates.Where(c => c != null).ToList();
                         }
 
                         try
                         {
-                            if (candidates.Count() == 1)
+                            if (candidates.Count == 1)
                             {
                                 EnsureDirectoryExists(destination);
                                 File.Copy(candidates[0].FullName, destination, false);
                             }
                             else
                             {
-                                // Count() == 0 will be handled here
+                                // Count == 0 will be handled here
                                 foreach (var candidate in candidates)
                                 {
                                     // TODO: how to handle
@@ -438,31 +458,30 @@ internal class Program
 
                 try
                 {
-                    using (var stream = File.OpenRead(fileInfo.FullName))
-                    using (var reader = new BinaryReader(stream))
+                    using var stream = File.OpenRead(fileInfo.FullName);
+                    using var reader = new BinaryReader(stream);
+
+                    // TODO: why is this a signed int?
+                    reader.Read(buffer, 0, (int)fileHash.HashOffset);
+                    while (pieceLength == (ulong)reader.Read(buffer, 0, (int)pieceLength))
                     {
-                        // TODO: why is this a signed int?
-                        reader.Read(buffer, 0, (int) fileHash.HashOffset);
-                        while (pieceLength == (ulong) reader.Read(buffer, 0, (int) pieceLength))
+                        // just skip the rest of this file
+                        if (pieceIndex >= fileHash.PieceHashes.Count)
+                            break;
+
+                        var hash = Torrent.Bencode.Hash(buffer);
+                        if (MatchOptions.verbose)
                         {
-                            // just skip the rest of this file
-                            if (pieceIndex >= fileHash.PieceHashes.Count)
-                                break;
-
-                            var hash = Torrent.Bencode.Hash(buffer);
-                            if (MatchOptions.verbose)
-                            {
-                                Console.WriteLine(hash);
-                                Console.WriteLine(fileHash.PieceHashes[pieceIndex]);
-                                Console.WriteLine("");
-                            }
-
-                            // any piece matched is a potential fill
-                            if (hash == fileHash.PieceHashes[pieceIndex])
-                                hashMatched++;
-
-                            pieceIndex++;
+                            Console.WriteLine(hash);
+                            Console.WriteLine(fileHash.PieceHashes[pieceIndex]);
+                            Console.WriteLine("");
                         }
+
+                        // any piece matched is a potential fill
+                        if (hash == fileHash.PieceHashes[pieceIndex])
+                            hashMatched++;
+
+                        pieceIndex++;
                     }
                 }
                 catch (System.IO.FileNotFoundException)
@@ -485,7 +504,7 @@ internal class Program
     // https://stackoverflow.com/questions/929276/how-to-recursively-list-all-the-files-in-a-directory-in-c
     public static IEnumerable<FileInfo> GetFiles(string path, string wildcard)
     {
-        Queue<string> queue = new Queue<string>();
+        Queue<string> queue = new ();
         queue.Enqueue(path);
         while (queue.Count > 0)
         {
@@ -501,10 +520,10 @@ internal class Program
             {
                 Console.Error.WriteLine(ex);
             }
-            FileInfo[] files = null;
+
+            FileInfo[] files = Array.Empty<FileInfo>();
             try
             {
-                // files = Directory.GetFiles(path, wildcard);
                 var dir = new DirectoryInfo(path);
                 files = dir.GetFiles(wildcard);
             }
