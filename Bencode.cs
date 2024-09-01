@@ -1,12 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics.Eventing.Reader;
-using System.IO;
-using System.Linq;
-using System.Numerics;
-using System.Security.Policy;
+﻿using HashTester;
+using HashTester.UI;
+using System;
 using System.Text;
-using System.Threading.Tasks;
 using XSystem.Security.Cryptography;
 
 namespace Torrent
@@ -58,7 +53,7 @@ namespace Torrent
         private long infohashEnd = 0;
         private bool verbose = false;
 
-        private static SHA1Managed sha1 = new SHA1Managed();
+        readonly private static SHA1Managed sha1 = new();
 
         public Bencode(string _path, bool verbose)
         {
@@ -110,7 +105,7 @@ namespace Torrent
         // this throws away hashes that span files
         public List<FileHash> CreateFileHashList(TorrentData data)
         {
-            List<FileHash> fileHashList = new List<FileHash>();
+            List<FileHash> fileHashList = new ();
 
             if (data.info.files == null || data.info.files.Count < 1)
                 return fileHashList;
@@ -118,7 +113,7 @@ namespace Torrent
             if(verbose)
                 Console.WriteLine("Files:");
 
-            Queue<TorrentFile> files = new Queue<TorrentFile>();
+            Queue<TorrentFile> files = new ();
             for (int filesIndex = 0; filesIndex < data.info.files.Count; filesIndex++)
             {
                 files.Enqueue(data.info.files[filesIndex]);
@@ -131,7 +126,7 @@ namespace Torrent
             if (verbose)
                 Console.WriteLine("Pieces:");
 
-            Queue<string> pieceHashes = new Queue<string>();
+            Queue<string> pieceHashes = new ();
             for (int pieceIndex = 0; pieceIndex < data.info.pieces.Count; pieceIndex++)
             {
                 pieceHashes.Enqueue(data.info.pieces[pieceIndex]);
@@ -177,7 +172,7 @@ namespace Torrent
                 }
                 else
                 {
-                    FileHash fileHash = new FileHash();
+                    FileHash fileHash = new ();
                     fileHash.Path = file.path;
                     fileHash.FileLength = file.length;
                     fileHash.HashOffset = (ulong) Math.Abs(lastHashOffset);
@@ -216,7 +211,7 @@ namespace Torrent
             return fileHashList;
         }
 
-        private List<TorrentFile> CreateTorrentFileList(List<object> l)
+        private static List<TorrentFile> CreateTorrentFileList(List<object> l)
         {
             var result = new List<TorrentFile>();
 
@@ -226,26 +221,45 @@ namespace Torrent
                 {
                     if (i is IDictionary<string, object>)
                     {
-                        IDictionary<string, object> d = (IDictionary<string, object>)i;
+                        IDictionary<string, object> d = i as IDictionary<string, object>;
+
+                        if (!d.ContainsKey("path"))
+                            throw new BencodeException("Invalid dictionary, path is missing");
+
+                        if (!d.ContainsKey("length"))
+                            throw new BencodeException("Invalid dictionary, length is missing");
+
                         var t = new TorrentFile();
                         t.length = Convert.ToUInt64(d["length"]);
                         if (d["path"] is IList<object>)
                         {
                             var pathList = d["path"] as IList<object>;
-                            for(int index = 0; index < pathList.Count; index++)
+                            if (pathList != null)
                             {
-                                if (pathList[index] is byte[])
+                                for (int index = 0; index < pathList.Count; index++)
                                 {
-                                    pathList[index] = UTF8Encoding.UTF8.GetString(pathList[index] as byte[]);
+                                    if (pathList[index] is byte[])
+                                    {
+                                        pathList[index] = UTF8Encoding.UTF8.GetString(pathList[index] as byte[]);
+                                    }
                                 }
                             }
                             //t.path = Path.Combine(params pathList.ToArray());
-                            t.path = Path.Combine (pathList.Select(p => p.ToString()).ToArray());
+                            t.path = Path.Combine(pathList.Select(p => p.ToString()).ToArray());
                         }
                         else
                         {
-                            t.path = d["path"].ToString();
+                            t.path = (d["path"] as string) ?? "";
                         }
+
+                        if (FSUtilities.IsAbsolutePath(t.path))
+                            throw new BencodeException("Absolute path found");
+
+                        string? message = FSUtilities.IsValidPath(t.path);
+                        if (message != null)
+                            throw new BencodeException("Invalid path found: " + message);
+
+                        t.path = FSUtilities.NormalizePath(t.path);
 
                         result.Add(t);
                     }
@@ -255,7 +269,7 @@ namespace Torrent
             return result;
         }
 
-        private List<string> CreateTorrentPieceInfo(byte[] pieces)
+        private static List<string> CreateTorrentPieceInfo(byte[] pieces)
         {
             var pieceList = new List<string>();
             var sBuilder = new StringBuilder();
@@ -272,7 +286,7 @@ namespace Torrent
             return pieceList;
         }
 
-        private TorrentInfo CreateTorrentInfo(IDictionary<string, object> d)
+        private static TorrentInfo CreateTorrentInfo(IDictionary<string, object> d)
         {
             string key;
             var torrentInfo = new TorrentInfo();
@@ -285,7 +299,7 @@ namespace Torrent
 
                 key = "piece length";
                 if (d.ContainsKey(key))
-                    torrentInfo.piece_length = (ulong) d[key];
+                    torrentInfo.piece_length = Convert.ToUInt64(d[key]);
 
                 key = "pieces";
                 if (d.ContainsKey(key))
@@ -293,7 +307,7 @@ namespace Torrent
 
                 key = "private";
                 if (d.ContainsKey(key))
-                    torrentInfo.is_private = (ulong)d[key];
+                    torrentInfo.is_private = Convert.ToUInt64(d[key]);
 
                 key = "files";
                 if (d.ContainsKey(key))
@@ -302,7 +316,7 @@ namespace Torrent
                 { 
                     // temp hack - single files don't have a "files" info block
                     torrentInfo.files = new List<TorrentFile>();
-                    TorrentFile file = new TorrentFile();
+                    TorrentFile file = new ();
                     file.path = torrentInfo.name;
                     key = "length";
                     if (d.ContainsKey(key))
@@ -314,7 +328,7 @@ namespace Torrent
             return torrentInfo;
         }
 
-        public TorrentData CreateTorrentData(IDictionary<string, object> d)
+        public static TorrentData CreateTorrentData(IDictionary<string, object> d)
         {
             string key;
             var torrentData = new TorrentData();
@@ -329,9 +343,24 @@ namespace Torrent
                 if (d.ContainsKey(key))
                 {
                     torrentData.announce_list = new List<string>();
-                    foreach(var s in d[key] as List<object>)
+                    var l = d[key] as List<object>;
+                    if (l != null)
                     {
-                        torrentData.announce_list.Add(s.ToString());
+                        foreach (object o in l)
+                        {
+                            if (o != null)
+                            {
+                                if (o is string)
+                                    torrentData.announce_list.Add(o as string);
+                                else if (o is List<object>)
+                                {
+                                    foreach(var ls in (o as List<object>))
+                                        torrentData.announce_list.Add(ls.ToString());
+                                }
+                                else
+                                    System.Diagnostics.Debugger.Break();
+                            }
+                        }
                     }
                 }
 
@@ -372,35 +401,56 @@ namespace Torrent
         private Dictionary<string, object> ReadDictionary()
         {
             var result = new Dictionary<string, object>();
+
+            if (stream == null) 
+                return result;
+
             while (true)
             {
-                object key = Read();
+                object? key = Read();
                 if (key == null)
                     break;
 
-                if (key.ToString() == "info")
-                    infohashStart = stream.Position;
+                if (key is IDictionary<string, object>)
+                {
+                    // TODO: ???
+                    // is this a V2 file?
+                    //var d = (IDictionary<string, object>)key;
+                    //foreach (var k in d.Keys)
+                    //    result.Add(k, d[k]);
+                }
+                else
+                {
 
-                object value = Read(key.ToString());
-                if (value == null)
-                    break;
+                    string sKey = key as string;
 
-                result.Add(key.ToString(), value);
+                    if (result.ContainsKey(sKey))
+                        return result;
 
-                if (key.ToString() == "info")
-                    infohashEnd = stream.Position;
+                    if (sKey == "info")
+                        infohashStart = stream.Position;
+
+                    object value = Read(sKey);
+                    if (value == null)
+                        break;
+
+                    result.Add(sKey, value);
+
+                    if (sKey == "info")
+                        infohashEnd = stream.Position;
+                }
             }
             return result;
         }
 
         private object ReadList()
         {
-            List<object> items = new List<object>();
-            object item = Read();
+            List<object> items = new();
+            object? item = Read();
             while (item != null)
             {
                 if (item is string)
-                    items.Add(item.ToString());
+                    items.Add(item as string);
                 else
                     items.Add(item);
 
@@ -415,7 +465,10 @@ namespace Torrent
 
         private ulong ReadInt()
         {
-            StringBuilder sb = new StringBuilder();
+            if (stream == null) 
+                return 0;
+
+            StringBuilder sb = new();
             int c = stream.ReadByte();
 
             do
@@ -429,12 +482,18 @@ namespace Torrent
             if (temp == "-1")
                 temp = "0";
 
+            if (temp[0] == '-')
+                throw new BencodeException("Negative values are allowed, but unexpected");
+
             return Convert.ToUInt64(temp);
         }
 
-        private object ReadBytes(int c)
+        private object? ReadBytes(int c)
         {
-            StringBuilder sb = new StringBuilder();
+            if (stream == null)
+                return null;
+
+            StringBuilder sb = new ();
             while (c != ':')
             {
                 sb.Append((char)c);
@@ -453,9 +512,12 @@ namespace Torrent
             return bytes;
         }
 
-        private object ReadString(int c)
+        private object? ReadString(int c)
         {
-            StringBuilder sb = new StringBuilder();
+            if (stream == null)
+                return null;
+
+            StringBuilder sb = new ();
             while (c != ':')
             {
                 sb.Append((char)c);
@@ -475,9 +537,12 @@ namespace Torrent
             return result;
         }
 
-        public object Read(string? key = null)
+        public object? Read(string? key = null)
         {
-            object result = null;
+            if (stream == null)
+                return null;
+
+            object? result = null;
 
             while (true)
             {
@@ -522,6 +587,8 @@ namespace Torrent
         {
             if (stream != null)
                 stream.Dispose();
+
+            GC.SuppressFinalize(this);
         }
     }
 }

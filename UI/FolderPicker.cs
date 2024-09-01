@@ -7,8 +7,8 @@ using System.Runtime.InteropServices.ComTypes;
 
 public class FolderPicker
 {
-    private readonly List<string> _resultPaths = new List<string>();
-    private readonly List<string> _resultNames = new List<string>();
+    private readonly List<string> _resultPaths = new ();
+    private readonly List<string> _resultNames = new ();
 
     public IReadOnlyList<string> ResultPaths => _resultPaths;
     public IReadOnlyList<string> ResultNames => _resultNames;
@@ -91,11 +91,10 @@ public class FolderPicker
             items.GetItemAt(i, out var item);
             CheckHr(item.GetDisplayName(SIGDN.SIGDN_DESKTOPABSOLUTEPARSING, out var path), throwOnError);
             CheckHr(item.GetDisplayName(SIGDN.SIGDN_DESKTOPABSOLUTEEDITING, out var name), throwOnError);
-            if (path != null || name != null)
-            {
+            if (path != null)
                 _resultPaths.Add(path);
+            if (name != null)
                 _resultNames.Add(name);
-            }
         }
         return true;
     }
@@ -107,14 +106,14 @@ public class FolderPicker
     }
 
     [DllImport("shell32")]
-    private static extern int SHCreateItemFromParsingName([MarshalAs(UnmanagedType.LPWStr)] string pszPath, IBindCtx pbc, [MarshalAs(UnmanagedType.LPStruct)] Guid riid, out IShellItem ppv);
+    private static extern int SHCreateItemFromParsingName([MarshalAs(UnmanagedType.LPWStr)] string pszPath, IBindCtx? pbc, [MarshalAs(UnmanagedType.LPStruct)] Guid riid, out IShellItem ppv);
 
     [DllImport("user32")]
     private static extern IntPtr GetDesktopWindow();
 
-#pragma warning disable IDE1006 // Naming Styles
+//#pragma warning disable IDE1006 // Naming Styles
     private const int ERROR_CANCELLED = unchecked((int)0x800704C7);
-#pragma warning restore IDE1006 // Naming Styles
+//#pragma warning restore IDE1006 // Naming Styles
 
     [ComImport, Guid("DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7")] // CLSID_FileOpenDialog
     private class FileOpenDialog { }
