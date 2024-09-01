@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "HashTester": {
+      "commandName": "Project",
+      "commandLineArgs": "-d"
+    }
+  }
+}
