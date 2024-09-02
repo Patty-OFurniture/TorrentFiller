@@ -42,6 +42,9 @@ namespace HashTester.UI
 
             var filePath = value as string;
 
+            if (filePath.Contains(@"..\"))
+                return "CDUP found in path";
+
             //check for empty/null file path:
             if (string.IsNullOrEmpty(filePath))
             {
@@ -79,12 +82,28 @@ namespace HashTester.UI
         // https://stackoverflow.com/questions/1266674/how-can-one-get-an-absolute-or-normalized-file-path-in-net
         public static string NormalizePath(string path)
         {
-            return path; // TODO: these validations assume fully qualified
-            return new Uri(path).LocalPath;
-            return Path.GetFullPath(new Uri(path).LocalPath)
-                       .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                       //.ToUpperInvariant()
-                       ;
+            if(string.IsNullOrEmpty(path))
+                return path; // it won't be valid, but it's normalized
+
+            string current = System.IO.Directory.GetCurrentDirectory();
+            try
+            {
+                string absolute = Path.GetFullPath(path)
+                           .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                           //.ToUpperInvariant()
+                           ;
+                return System.IO.Path.GetRelativePath(current + Path.DirectorySeparatorChar, absolute);
+            }
+            catch { }
+
+            try
+            {
+                string absolute = new Uri(path).LocalPath;
+                return System.IO.Path.GetRelativePath(current + Path.DirectorySeparatorChar, absolute);
+            }
+            catch { }
+
+            throw new BencodeException($"Cannot normalize path: {path}");
         }
 #else
 #endif

@@ -242,6 +242,9 @@ namespace Torrent
                                     {
                                         pathList[index] = UTF8Encoding.UTF8.GetString(pathList[index] as byte[]);
                                     }
+
+                                    if (pathList[index] is not string)
+                                        throw new BencodeException($"Complex type {pathList[index].GetType().FullName} found in path");
                                 }
                             }
                             //t.path = Path.Combine(params pathList.ToArray());
@@ -255,11 +258,12 @@ namespace Torrent
                         if (FSUtilities.IsAbsolutePath(t.path))
                             throw new BencodeException("Absolute path found");
 
+                        t.path = FSUtilities.NormalizePath(t.path);
+
                         string? message = FSUtilities.IsValidPath(t.path);
                         if (message != null)
                             throw new BencodeException("Invalid path found: " + message);
 
-                        t.path = FSUtilities.NormalizePath(t.path);
 
                         result.Add(t);
                     }
@@ -413,6 +417,7 @@ namespace Torrent
 
                 if (key is IDictionary<string, object>)
                 {
+                    System.Diagnostics.Debugger.Break();
                     // TODO: ???
                     // is this a V2 file?
                     //var d = (IDictionary<string, object>)key;
@@ -421,7 +426,6 @@ namespace Torrent
                 }
                 else
                 {
-
                     string sKey = key as string;
 
                     if (result.ContainsKey(sKey))
