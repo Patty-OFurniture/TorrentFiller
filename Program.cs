@@ -1,19 +1,11 @@
-﻿using System;
-using System.Drawing.Text;
-using System.IO;
-using System.Text;
+﻿using HashTester;
 using HashTester.UI;
-using HashTester;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Torrent;
-using XSystem.Security.Cryptography;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
-using System.Windows.Forms;
-using XAct;
 
-internal class Program
+public class Program
 {
+    public const uint OneK = 1024;
+
     internal class MatchOptions
     {
         public static string searchRoot = "";
@@ -55,12 +47,12 @@ internal class Program
         };
 
         string fileName = @"";
-        int pieceLength = 32 * 1024;
+        int pieceLength = 32 * OneK;
         using (var stream = File.OpenRead(fileName))
         using (var reader = new BinaryReader(stream))
         {
 
-            if (stream.Length >= pieceLength && stream.Length <= (1024*1024*4)) // 4MB
+            if (stream.Length >= pieceLength && stream.Length <= (OneK*OneK*4)) // 4MB
             {
                 var buffer = new byte[stream.Length];
                 reader.Read(buffer, 0, (int) stream.Length);
@@ -137,10 +129,10 @@ internal class Program
             return;
         }
 
-        Console.WriteLine($"searchRoot : {MatchOptions.searchRoot}");
+        Console.WriteLine($"searchRoot    : {MatchOptions.searchRoot}");
         Console.WriteLine($"tryUniqueSize : {MatchOptions.tryUniqueSize}");
-        Console.WriteLine($"deepTorrent : {MatchOptions.deepTorrent}");
-        Console.WriteLine($"deepTorrent : {MatchOptions.verbose}");
+        Console.WriteLine($"deepTorrent   : {MatchOptions.deepTorrent}");
+        Console.WriteLine($"deepTorrent   : {MatchOptions.verbose}");
 
         Console.WriteLine("Finding torrents...");
 
@@ -242,6 +234,10 @@ internal class Program
             if (reader.OpenTorrent())
             {
                 var d = reader.Read() as IDictionary<string, object>;
+
+                if (d == null)
+                    throw new BencodeException("Initial dictionary not loaded");
+
                 var t = Bencode.CreateTorrentData(d);
                 var infoHash = reader.GetInfoHash();
 
@@ -254,23 +250,17 @@ internal class Program
                     return false;
                 }
 
-                ulong piecesize = t.info.piece_length;
-                string pieceString = "bytes";
-
-                if (piecesize == (piecesize / 1024 * 1024))
+                if (t.info.piece_length < 1)
                 {
-                    piecesize = piecesize / 1024;
-                    pieceString = "kB";
-                    if (piecesize == (piecesize / 1024 * 1024))
-                    {
-                        piecesize = piecesize / 1024;
-                        pieceString = "mB";
-                    }
+                    Console.WriteLine($"Corrupted file, piece size is invalid");
+                    return false;
                 }
+
+                string pieceSize = FSUtilities.FormatSize(t.info.piece_length, OneK);
 
                 if (MatchOptions.verbose)
                 {
-                    Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {piecesize} {pieceString} Pieces: {t.info.pieces.Count}");
+                    Console.WriteLine($"{Environment.NewLine}InfoHash: {infoHash} Piece Size: {pieceSize} Pieces: {t.info.pieces.Count}");
                     Console.WriteLine("");
                 }
 

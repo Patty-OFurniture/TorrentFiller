@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace HashTester.UI
 {
-    internal class FSUtilities
+    public class FSUtilities
     {
 #if WINDOWS
         private static string[] reserved = {"CON", "PRN", "AUX", "NUL" };
@@ -104,6 +104,25 @@ namespace HashTester.UI
             catch { }
 
             throw new BencodeException($"Cannot normalize path: {path}");
+        }
+
+        public static string FormatSize(ulong piece_length, uint OneK)
+        {
+            ulong piecesize = piece_length;
+            string pieceString = "bytes";
+
+            if (piecesize == (piecesize / OneK * OneK))
+            {
+                piecesize = piecesize / OneK;
+                pieceString = "kB";
+                if (piecesize == (piecesize / OneK * OneK))
+                {
+                    piecesize = piecesize / OneK;
+                    pieceString = "mB";
+                }
+            }
+
+            return $"{piecesize} {pieceString}";
         }
 #else
 #endif
