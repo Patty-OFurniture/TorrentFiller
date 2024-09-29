@@ -303,7 +303,8 @@ namespace Torrent
 
                 key = "piece length";
                 if (d.ContainsKey(key))
-                    torrentInfo.piece_length = Convert.ToUInt64(d[key]);
+                    // torrentInfo.piece_length = Convert.ToUInt64(d[key]);
+                    ulong.TryParse(d[key].ToString(), out torrentInfo.piece_length);
 
                 key = "pieces";
                 if (d.ContainsKey(key))
@@ -328,6 +329,10 @@ namespace Torrent
                     torrentInfo.files.Add(file);
                 }
             }
+
+            // probably v2 torrent file
+            if (torrentInfo.pieces == null)
+                torrentInfo.pieces = new List<string> ();
 
             return torrentInfo;
         }
