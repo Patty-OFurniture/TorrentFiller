@@ -11,7 +11,7 @@ Is it safe?  Well,
 2) It does not overwrite any files
 3) It does not delete any files
 4) I'm assuming if you are using this, you have opened the torrent in an actual torrent application.  If you are paranoid, export from there first.
-5) Yes, unit tests based on existing test suites such as from libtorrent-raster are being worked on.
+5) Fixes from trying to parse libtorrent-raster are done.  More tests in progress.
 
 Windows version in HashTester.zip prompts for the folder with the .torrent and files, and copies them to the local path.  Couldn't be simpler, and it's *fast*.
 
